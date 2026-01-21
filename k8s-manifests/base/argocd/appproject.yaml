@@ -1,0 +1,45 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: ENVIRONMENT_NAME  # Will be patched by overlays
+  namespace: argocd
+spec:
+  description: Applications for ENVIRONMENT_NAME environment
+  sourceRepos:
+    - https://github.com/your-org/k8s-apps  # Update with your GitOps repository
+    - https://charts.bitnami.com/bitnami
+    - https://prometheus-community.github.io/helm-charts
+    - https://kubernetes-sigs.github.io/external-dns
+    - '*'  # Allow all repos (restrict in production)
+  destinations:
+    - namespace: '*'
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+    - group: networking.k8s.io
+      kind: IngressClass
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
+  roles:
+    - name: admin
+      description: Admin access
+      policies:
+        - p, proj:ENVIRONMENT_NAME:admin, applications, *, ENVIRONMENT_NAME/*, allow
+        - p, proj:ENVIRONMENT_NAME:admin, repositories, *, *, allow
+      groups:
+        - argocd-admins
+    - name: developer
+      description: Developer access
+      policies:
+        - p, proj:ENVIRONMENT_NAME:developer, applications, get, ENVIRONMENT_NAME/*, allow
+        - p, proj:ENVIRONMENT_NAME:developer, applications, sync, ENVIRONMENT_NAME/*, allow
+      groups:
+        - argocd-developers

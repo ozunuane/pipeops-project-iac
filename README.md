@@ -8,12 +8,13 @@ This setup includes:
 
 - **EKS Auto Mode Cluster** - Kubernetes cluster with managed node groups
 - **VPC with Multi-AZ deployment** - Production-grade networking
-- **RDS PostgreSQL** - Managed database with automated backups
+- **RDS PostgreSQL with Multi-AZ** - HA database with automatic failover & read replicas
 - **ArgoCD** - GitOps continuous deployment
 - **AWS Load Balancer Controller** - Application Load Balancer integration
 - **Prometheus & Grafana** - Monitoring and observability
 - **External Secrets Operator** - AWS Secrets Manager integration
 - **Container Insights** - CloudWatch monitoring for containers
+- **CloudWatch Alarms** - Proactive database monitoring
 
 ## 🏗️ Infrastructure Components
 
@@ -34,6 +35,31 @@ This setup includes:
 - **Auto Scaling**: Cluster and application level scaling
 - **GP3 Storage**: Cost-optimized storage class
 - **Reserved Capacity**: Production workload optimization
+
+## 🎯 Recent Updates
+
+### RDS High Availability & Multi-Region Disaster Recovery (Latest)
+The RDS module now supports **enterprise-grade HA/DR** with three protection tiers:
+
+**Tier 1: Multi-AZ (Single Region)**
+- ✅ Multi-AZ deployment with automatic failover (1-2 min RTO)
+- ✅ Read replicas for horizontal scaling
+- ✅ CloudWatch alarms for proactive monitoring
+- 💰 Cost: $1,196/month
+
+**Tier 2: + Cross-Region Backups**
+- ✅ Everything in Tier 1 +
+- ✅ Automated backup replication to DR region
+- 💰 Cost: $1,270/month (+6%)
+
+**Tier 3: + Multi-Region DR Replica**
+- ✅ Everything in Tier 2 +
+- ✅ Live DR replica in us-east-1 (Multi-AZ)
+- ✅ 5-10 second replication lag, 15-30 min RTO
+- 💰 Cost: $1,798/month (+50%)
+
+**📚 Complete Documentation:**
+- **[RDS Complete Guide](./RDS_COMPLETE_GUIDE.md)** ← **START HERE** - Everything you need in one place
 
 ## 🚀 Quick Start
 

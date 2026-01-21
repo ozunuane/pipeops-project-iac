@@ -1,0 +1,37 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: production
+  namespace: argocd
+spec:
+  description: Applications for production environment
+  # Stricter source repos for production
+  sourceRepos:
+    - https://github.com/your-org/k8s-apps  # Only your approved repo
+    - https://charts.bitnami.com/bitnami
+    - https://prometheus-community.github.io/helm-charts
+$patch: replace
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: app-of-apps-production
+  namespace: argocd
+spec:
+  project: production
+  source:
+    path: applications/production
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true  # Prune resources last in production
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+$patch: merge

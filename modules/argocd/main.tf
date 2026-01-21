@@ -3,10 +3,10 @@ resource "kubernetes_namespace" "argocd" {
   metadata {
     name = "argocd"
     labels = {
-      name                               = "argocd"
-      "pod-security.kubernetes.io/audit" = "privileged"
+      name                                 = "argocd"
+      "pod-security.kubernetes.io/audit"   = "privileged"
       "pod-security.kubernetes.io/enforce" = "privileged"
-      "pod-security.kubernetes.io/warn" = "privileged"
+      "pod-security.kubernetes.io/warn"    = "privileged"
     }
   }
 }
@@ -35,16 +35,16 @@ resource "helm_release" "argocd" {
         }
 
         cm = {
-          "exec.enabled" = true
+          "exec.enabled"                  = true
           "server.enable.proxy.extension" = true
           "resource.compareoptions" = yamlencode({
             ignoreAggregatedRoles = true
           })
           "oidc.config" = var.enable_oidc ? yamlencode({
-            name = "AWS SSO"
-            issuer = var.oidc_issuer_url
-            clientId = var.oidc_client_id
-            clientSecret = var.oidc_client_secret
+            name            = "AWS SSO"
+            issuer          = var.oidc_issuer_url
+            clientId        = var.oidc_client_id
+            clientSecret    = var.oidc_client_secret
             requestedScopes = ["openid", "profile", "email"]
             requestedIDTokenClaims = {
               groups = {
@@ -56,7 +56,7 @@ resource "helm_release" "argocd" {
 
         rbac = {
           "policy.default" = "role:readonly"
-          "policy.csv" = var.rbac_policy
+          "policy.csv"     = var.rbac_policy
         }
       }
 
@@ -64,11 +64,11 @@ resource "helm_release" "argocd" {
         replicas = var.ha_mode ? 2 : 1
         resources = {
           limits = {
-            cpu = "2"
+            cpu    = "2"
             memory = "2Gi"
           }
           requests = {
-            cpu = "500m"
+            cpu    = "500m"
             memory = "1Gi"
           }
         }
@@ -83,17 +83,17 @@ resource "helm_release" "argocd" {
       server = {
         replicas = var.ha_mode ? 2 : 1
         autoscaling = {
-          enabled = var.ha_mode
+          enabled     = var.ha_mode
           minReplicas = 2
           maxReplicas = 5
         }
         resources = {
           limits = {
-            cpu = "500m"
+            cpu    = "500m"
             memory = "512Mi"
           }
           requests = {
-            cpu = "100m"
+            cpu    = "100m"
             memory = "256Mi"
           }
         }
@@ -104,14 +104,14 @@ resource "helm_release" "argocd" {
           }
         }
         ingress = {
-          enabled = var.enable_ingress
+          enabled          = var.enable_ingress
           ingressClassName = "alb"
           annotations = {
-            "alb.ingress.kubernetes.io/scheme" = "internet-facing"
-            "alb.ingress.kubernetes.io/target-type" = "ip"
-            "alb.ingress.kubernetes.io/listen-ports" = "[{\"HTTPS\":443}]"
-            "alb.ingress.kubernetes.io/certificate-arn" = var.ssl_certificate_arn
-            "alb.ingress.kubernetes.io/ssl-redirect" = "443"
+            "alb.ingress.kubernetes.io/scheme"           = "internet-facing"
+            "alb.ingress.kubernetes.io/target-type"      = "ip"
+            "alb.ingress.kubernetes.io/listen-ports"     = "[{\"HTTPS\":443}]"
+            "alb.ingress.kubernetes.io/certificate-arn"  = var.ssl_certificate_arn
+            "alb.ingress.kubernetes.io/ssl-redirect"     = "443"
             "alb.ingress.kubernetes.io/backend-protocol" = var.server_insecure ? "HTTP" : "HTTPS"
           }
           hosts = [
@@ -119,7 +119,7 @@ resource "helm_release" "argocd" {
               host = var.argocd_domain
               paths = [
                 {
-                  path = "/"
+                  path     = "/"
                   pathType = "Prefix"
                 }
               ]
@@ -128,7 +128,7 @@ resource "helm_release" "argocd" {
           tls = [
             {
               secretName = "argocd-server-tls"
-              hosts = [var.argocd_domain]
+              hosts      = [var.argocd_domain]
             }
           ]
         }
@@ -137,17 +137,17 @@ resource "helm_release" "argocd" {
       repoServer = {
         replicas = var.ha_mode ? 2 : 1
         autoscaling = {
-          enabled = var.ha_mode
+          enabled     = var.ha_mode
           minReplicas = 2
           maxReplicas = 5
         }
         resources = {
           limits = {
-            cpu = "1"
+            cpu    = "1"
             memory = "1Gi"
           }
           requests = {
-            cpu = "250m"
+            cpu    = "250m"
             memory = "512Mi"
           }
         }
@@ -160,15 +160,15 @@ resource "helm_release" "argocd" {
       }
 
       applicationSet = {
-        enabled = true
+        enabled  = true
         replicas = var.ha_mode ? 2 : 1
         resources = {
           limits = {
-            cpu = "500m"
+            cpu    = "500m"
             memory = "512Mi"
           }
           requests = {
-            cpu = "100m"
+            cpu    = "100m"
             memory = "256Mi"
           }
         }
@@ -181,7 +181,7 @@ resource "helm_release" "argocd" {
       }
 
       notifications = {
-        enabled = var.enable_notifications
+        enabled   = var.enable_notifications
         argocdUrl = "https://${var.argocd_domain}"
         secret = {
           items = var.notification_secrets
@@ -194,7 +194,7 @@ resource "helm_release" "argocd" {
             url = var.github_webhook_url
             headers = [
               {
-                name = "Authorization"
+                name  = "Authorization"
                 value = "token $github-token"
               }
             ]
@@ -204,15 +204,15 @@ resource "helm_release" "argocd" {
             slack = {
               attachments = yamlencode([
                 {
-                  title = "{{.app.metadata.name}}"
+                  title      = "{{.app.metadata.name}}"
                   title_link = "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}"
-                  color = "#18be52"
+                  color      = "#18be52"
                   fields = [
                     {
                       title = "Sync Status"
                       value = "{{.app.status.sync.status}}"
                       short = true
-                    }
+                    },
                     {
                       title = "Repository"
                       value = "{{.app.spec.source.repoURL}}"
@@ -226,8 +226,8 @@ resource "helm_release" "argocd" {
           "trigger.on-deployed" = yamlencode([
             {
               oncePer = "app.status.sync.revision"
-              send = ["app-deployed"]
-              when = "app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'"
+              send    = ["app-deployed"]
+              when    = "app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'"
             }
           ])
         }
@@ -264,8 +264,8 @@ resource "aws_iam_role" "argocd" {
         }
         Condition = {
           StringEquals = {
-            "${replace(var.oidc_issuer_url, "https://", "")}:sub": "system:serviceaccount:argocd:argocd-server"
-            "${replace(var.oidc_issuer_url, "https://", "")}:aud": "sts.amazonaws.com"
+            "${replace(var.oidc_issuer_url, "https://", "")}:sub" : "system:serviceaccount:argocd:argocd-server"
+            "${replace(var.oidc_issuer_url, "https://", "")}:aud" : "sts.amazonaws.com"
           }
         }
       }

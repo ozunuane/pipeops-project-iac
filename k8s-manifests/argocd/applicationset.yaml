@@ -1,0 +1,56 @@
+# ApplicationSet for Multi-Environment Deployment
+# This automatically creates ArgoCD Applications for all environments
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: infrastructure-applicationset
+  namespace: argocd
+spec:
+  generators:
+  - list:
+      elements:
+      - environment: dev
+        awsRegion: us-west-2
+        repoPath: k8s-manifests/overlays/dev
+        syncPolicy: automated
+      - environment: staging
+        awsRegion: us-west-2
+        repoPath: k8s-manifests/overlays/staging
+        syncPolicy: automated
+      - environment: prod
+        awsRegion: us-west-2
+        repoPath: k8s-manifests/overlays/prod
+        syncPolicy: manual  # Manual sync for production safety
+  template:
+    metadata:
+      name: 'infrastructure-{{environment}}'
+      labels:
+        environment: '{{environment}}'
+        managed-by: applicationset
+    spec:
+      project: '{{environment}}'
+      source:
+        repoURL: https://github.com/your-org/pipeops-project-iac  # Update with your repo
+        targetRevision: HEAD
+        path: '{{repoPath}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: argocd
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: '{{syncPolicy}}' == 'automated'
+        syncOptions:
+          - CreateNamespace=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m
+      # Health assessment for custom resources
+      ignoreDifferences:
+      - group: apps
+        kind: Deployment
+        jsonPointers:
+        - /spec/replicas  # Ignore HPA-managed replicas

@@ -82,23 +82,25 @@ validate_environment() {
 setup_backend() {
     log_info "Setting up Terraform backend for $ENVIRONMENT..."
 
-    # Backend configuration - update these values with your actual backend
-    BACKEND_BUCKET="your-terraform-state-bucket-${ENVIRONMENT}"  # Update this
-    BACKEND_KEY="eks-${ENVIRONMENT}/terraform.tfstate"
-    BACKEND_REGION="us-west-2"
-    DYNAMODB_TABLE="terraform-state-lock-${ENVIRONMENT}"  # Update this
-
-    log_warning "Please ensure the following resources exist:"
-    log_warning "- S3 bucket: $BACKEND_BUCKET"
-    log_warning "- DynamoDB table: $DYNAMODB_TABLE"
-
-    # Initialize Terraform with backend configuration
-    terraform init \
-        -backend-config="bucket=$BACKEND_BUCKET" \
-        -backend-config="key=$BACKEND_KEY" \
-        -backend-config="region=$BACKEND_REGION" \
-        -backend-config="dynamodb_table=$DYNAMODB_TABLE" \
-        -reconfigure
+    # Check if backend.conf exists for this environment
+    if [[ -f "$ROOT_DIR/environments/$ENVIRONMENT/backend.conf" ]]; then
+        log_info "Using backend configuration from environments/$ENVIRONMENT/backend.conf"
+        
+        # Initialize Terraform with backend configuration file
+        terraform init \
+            -backend-config="$ROOT_DIR/environments/$ENVIRONMENT/backend.conf" \
+            -reconfigure
+    else
+        log_error "Backend configuration file not found: environments/$ENVIRONMENT/backend.conf"
+        log_error "Please create this file with the following format:"
+        log_error ""
+        log_error "key      = \"pipeops-project-iac-${ENVIRONMENT}-terraform.tfstate\""
+        log_error "region   = \"us-west-2\""
+        log_error "encrypt  = true"
+        log_error "dynamodb_table = \"terraform-state-lock-${ENVIRONMENT}\""
+        log_error "bucket   = \"pipeops-terraform-state-${ENVIRONMENT}-ACCOUNT_ID\""
+        exit 1
+    fi
 }
 
 terraform_plan() {

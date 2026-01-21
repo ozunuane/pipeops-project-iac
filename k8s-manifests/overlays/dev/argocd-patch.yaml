@@ -1,0 +1,19 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: dev
+  namespace: argocd
+spec:
+  description: Applications for dev environment
+$patch: replace
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: app-of-apps-dev
+  namespace: argocd
+spec:
+  project: dev
+  source:
+    path: applications/dev
+$patch: merge

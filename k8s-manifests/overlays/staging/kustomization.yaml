@@ -1,0 +1,36 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: argocd
+
+# Reference to base
+bases:
+  - ../../base
+
+# Environment-specific labels
+commonLabels:
+  environment: staging
+
+# Environment-specific annotations
+commonAnnotations:
+  environment: staging
+
+# Patches for staging environment
+patches:
+  - path: argocd-patch.yaml
+  - path: ingress-patch.yaml
+  - path: secrets-patch.yaml
+  - path: monitoring-patch.yaml
+
+# ConfigMap generator for environment variables
+configMapGenerator:
+  - name: environment-config
+    literals:
+      - ENVIRONMENT=staging
+      - AWS_REGION=us-west-2
+      - LOG_LEVEL=info
+
+# Images (if you want to use specific image tags for staging)
+# images:
+#   - name: your-app
+#     newTag: staging-v1.0.0

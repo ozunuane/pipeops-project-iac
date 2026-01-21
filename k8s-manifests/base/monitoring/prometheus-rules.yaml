@@ -1,0 +1,37 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: argocd-alerts
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: argocd
+spec:
+  groups:
+  - name: argocd
+    rules:
+    - alert: ArgoCDAppOutOfSync
+      expr: argocd_app_info{sync_status!="Synced"} == 1
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "ArgoCD Application {{ $labels.name }} is out of sync"
+        description: "ArgoCD Application {{ $labels.name }} in namespace {{ $labels.namespace }} has been out of sync for more than 5 minutes."
+
+    - alert: ArgoCDAppUnhealthy
+      expr: argocd_app_info{health_status!="Healthy"} == 1
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: "ArgoCD Application {{ $labels.name }} is unhealthy"
+        description: "ArgoCD Application {{ $labels.name }} in namespace {{ $labels.namespace }} has been unhealthy for more than 5 minutes."
+
+    - alert: ArgoCDRepoConnectionFailed
+      expr: argocd_git_request_duration_seconds_bucket{request_type="ls-remote"} > 30
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: "ArgoCD repository connection is slow or failing"
+        description: "ArgoCD is taking more than 30 seconds to connect to git repositories."

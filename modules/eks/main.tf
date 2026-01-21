@@ -12,9 +12,22 @@ resource "aws_eks_cluster" "main" {
     security_group_ids      = [aws_security_group.cluster.id]
   }
 
-  # Enable EKS Auto Mode (Preview - adjust based on availability)
+  # Enable EKS Auto Mode (all three configs must be set together)
   compute_config {
-    enabled = true
+    enabled    = true
+    node_pools = ["general-purpose"] # Auto Mode manages node pools
+  }
+
+  kubernetes_network_config {
+    elastic_load_balancing {
+      enabled = true # Enable ALB/NLB integration
+    }
+  }
+
+  storage_config {
+    block_storage {
+      enabled = true # Enable EBS CSI driver auto-provisioning
+    }
   }
 
   # Encryption of secrets in etcd

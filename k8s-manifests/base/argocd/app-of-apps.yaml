@@ -1,0 +1,28 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: app-of-apps-ENVIRONMENT_NAME  # Will be patched by overlays
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: ENVIRONMENT_NAME  # Will be patched by overlays
+  source:
+    repoURL: https://github.com/your-org/k8s-apps  # Update with your GitOps repository
+    targetRevision: HEAD
+    path: applications/ENVIRONMENT_NAME  # Will be patched by overlays
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

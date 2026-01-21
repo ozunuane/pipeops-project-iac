@@ -1,0 +1,17 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sample-app-ingress
+  namespace: default
+  annotations:
+    alb.ingress.kubernetes.io/tags: Environment=production,Project=pipeops,ManagedBy=kubernetes,CostCenter=production,Criticality=high
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS-1-2-2017-01  # Strict TLS for prod
+    # Add production SSL certificate
+    # alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-west-2:ACCOUNT_ID:certificate/prod-cert-id
+    # Add WAF for production
+    # alb.ingress.kubernetes.io/wafv2-acl-arn: "arn:aws:wafv2:us-west-2:ACCOUNT_ID:regional/webacl/prod-waf/12345"
+spec:
+  rules:
+  - host: app.pipeops.com  # Production domain
+$patch: merge

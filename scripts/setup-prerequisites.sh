@@ -4,8 +4,8 @@ set -e
 # Prerequisites Setup Script
 # This script helps set up the required AWS resources for the Terraform backend
 
-ENVIRONMENT=${1:-prod}
-REGION=${2:-us-west-2}
+ENVIRONMENT=${1:-dev}
+REGION=${2:-us-east-1}
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
 # Colors for output
@@ -188,21 +188,40 @@ create_iam_roles() {
 generate_backend_config() {
     BUCKET_NAME="pipeops-terraform-state-${ENVIRONMENT}-${ACCOUNT_ID}"
     TABLE_NAME="terraform-state-lock-${ENVIRONMENT}"
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+    BACKEND_CONF_DIR="$ROOT_DIR/environments/$ENVIRONMENT"
 
     log_info "Generating backend configuration..."
 
-    cat > "backend-${ENVIRONMENT}.hcl" << EOF
+    # Create environments directory if it doesn't exist
+    mkdir -p "$BACKEND_CONF_DIR"
+
+    # Generate backend.conf in the environment directory
+    cat > "$BACKEND_CONF_DIR/backend.conf" << EOF
+key      = "pipeops-project-iac-${ENVIRONMENT}-terraform.tfstate"
+region   = "${REGION}"
+encrypt  = true
+dynamodb_table = "${TABLE_NAME}"
+bucket   = "${BUCKET_NAME}"
+EOF
+
+    log_success "Backend configuration written to environments/$ENVIRONMENT/backend.conf"
+    
+    # Also generate a human-readable reference file at root
+    cat > "$ROOT_DIR/backend-${ENVIRONMENT}.hcl" << EOF
 # Backend configuration for $ENVIRONMENT environment
-# Usage: terraform init -backend-config=backend-${ENVIRONMENT}.hcl
+# This is a reference file. The actual config is in: environments/$ENVIRONMENT/backend.conf
+# Usage: terraform init -backend-config=environments/$ENVIRONMENT/backend.conf
 
 bucket         = "${BUCKET_NAME}"
-key            = "eks-${ENVIRONMENT}/terraform.tfstate"
+key            = "pipeops-project-iac-${ENVIRONMENT}-terraform.tfstate"
 region         = "${REGION}"
 encrypt        = true
 dynamodb_table = "${TABLE_NAME}"
 EOF
 
-    log_success "Backend configuration written to backend-${ENVIRONMENT}.hcl"
+    log_info "Reference configuration also written to backend-${ENVIRONMENT}.hcl"
 }
 
 setup_environment_file() {
@@ -245,22 +264,27 @@ validate_setup() {
 
 print_next_steps() {
     BUCKET_NAME="pipeops-terraform-state-${ENVIRONMENT}-${ACCOUNT_ID}"
+    TABLE_NAME="terraform-state-lock-${ENVIRONMENT}"
 
     log_success "Prerequisites setup completed!"
     echo ""
+    log_info "=== RESOURCES CREATED ==="
+    log_info "✓ S3 Bucket:       $BUCKET_NAME"
+    log_info "✓ DynamoDB Table:  $TABLE_NAME"
+    log_info "✓ KMS Key:         alias/pipeops-${ENVIRONMENT}-terraform"
+    log_info "✓ Backend Config:  environments/$ENVIRONMENT/backend.conf"
+    echo ""
     log_info "=== NEXT STEPS ==="
-    log_info "1. Update the deploy.sh script with the following values:"
-    log_info "   BACKEND_BUCKET=\"$BUCKET_NAME\""
-    log_info "   DYNAMODB_TABLE=\"terraform-state-lock-${ENVIRONMENT}\""
+    log_info "1. Review the backend configuration:"
+    log_info "   cat environments/$ENVIRONMENT/backend.conf"
     echo ""
-    log_info "2. Initialize Terraform backend:"
-    log_info "   terraform init -backend-config=backend-${ENVIRONMENT}.hcl"
-    echo ""
-    log_info "3. Plan your deployment:"
+    log_info "2. Plan your deployment (this will automatically initialize the backend):"
     log_info "   ./scripts/deploy.sh $ENVIRONMENT plan"
     echo ""
-    log_info "4. Apply your deployment:"
+    log_info "3. Apply your deployment:"
     log_info "   ./scripts/deploy.sh $ENVIRONMENT apply"
+    echo ""
+    log_info "The deploy.sh script will automatically use the backend.conf file!"
 }
 
 main() {

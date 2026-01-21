@@ -1,0 +1,43 @@
+# Resource Quotas for Production Namespaces
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: production-quota
+  namespace: default
+spec:
+  hard:
+    requests.cpu: "100"
+    requests.memory: 200Gi
+    limits.cpu: "200"
+    limits.memory: 400Gi
+    persistentvolumeclaims: "10"
+    services.loadbalancers: "5"
+---
+# Limit Range for Production Namespaces
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: production-limit-range
+  namespace: default
+spec:
+  limits:
+  - max:
+      cpu: "4"
+      memory: "16Gi"
+    min:
+      cpu: "100m"
+      memory: "128Mi"
+    default:
+      cpu: "1"
+      memory: "2Gi"
+    defaultRequest:
+      cpu: "500m"
+      memory: "1Gi"
+    type: Container
+  - max:
+      cpu: "8"
+      memory: "32Gi"
+    min:
+      cpu: "200m"
+      memory: "256Mi"
+    type: Pod

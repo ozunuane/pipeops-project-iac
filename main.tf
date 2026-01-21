@@ -1,9 +1,22 @@
-# Configure AWS Provider
+# Configure AWS Provider (Primary Region)
 provider "aws" {
   region = var.region
 
   default_tags {
     tags = var.tags
+  }
+}
+
+# Configure AWS Provider for Disaster Recovery Region
+provider "aws" {
+  alias  = "disaster_recovery"
+  region = var.dr_region
+
+  default_tags {
+    tags = merge(var.tags, {
+      DisasterRecovery = "true"
+      DRRegion         = var.dr_region
+    })
   }
 }
 
@@ -41,24 +54,24 @@ resource "random_password" "grafana_admin" {
 module "vpc" {
   source = "./modules/vpc"
 
-  project_name            = var.project_name
-  environment            = var.environment
-  region                 = var.region
-  vpc_cidr               = var.vpc_cidr
-  availability_zones     = var.availability_zones
-  public_subnet_cidrs    = var.public_subnet_cidrs
-  private_subnet_cidrs   = var.private_subnet_cidrs
-  database_subnet_cidrs  = var.database_subnet_cidrs
-  cluster_name           = local.cluster_name
-  tags                   = var.tags
+  project_name          = var.project_name
+  environment           = var.environment
+  region                = var.region
+  vpc_cidr              = var.vpc_cidr
+  availability_zones    = var.availability_zones
+  public_subnet_cidrs   = var.public_subnet_cidrs
+  private_subnet_cidrs  = var.private_subnet_cidrs
+  database_subnet_cidrs = var.database_subnet_cidrs
+  cluster_name          = local.cluster_name
+  tags                  = var.tags
 }
 
 # EKS Module
 module "eks" {
   source = "./modules/eks"
 
-  cluster_name                          = local.cluster_name
-  kubernetes_version                    = var.kubernetes_version
+  cluster_name                         = local.cluster_name
+  kubernetes_version                   = var.kubernetes_version
   vpc_id                               = module.vpc.vpc_id
   vpc_cidr_block                       = module.vpc.vpc_cidr_block
   private_subnet_ids                   = module.vpc.private_subnet_ids
@@ -71,23 +84,52 @@ module "eks" {
   tags                                 = var.tags
 }
 
-# RDS Module
+# RDS Module with Multi-AZ, Read Replica, and Multi-Region DR support
 module "rds" {
   source = "./modules/rds"
 
-  project_name              = var.project_name
-  environment              = var.environment
-  vpc_id                   = module.vpc.vpc_id
-  db_subnet_group_name     = module.vpc.database_subnet_group_name
-  allowed_security_groups  = [module.eks.node_security_group_id]
+  providers = {
+    aws                   = aws
+    aws.disaster_recovery = aws.disaster_recovery
+  }
+
+  project_name            = var.project_name
+  environment             = var.environment
+  region                  = var.region
+  vpc_id                  = module.vpc.vpc_id
+  db_subnet_group_name    = module.vpc.database_subnet_group_name
+  allowed_security_groups = [module.eks.node_security_group_id]
   allowed_cidr_blocks     = [module.vpc.vpc_cidr_block]
-  database_password        = local.db_password
-  db_instance_class        = var.db_instance_class
-  allocated_storage        = var.db_allocated_storage
-  backup_retention_period  = var.db_backup_retention
-  deletion_protection      = var.environment == "prod" ? true : false
-  skip_final_snapshot      = var.environment == "prod" ? false : true
-  tags                     = var.tags
+  database_password       = local.db_password
+  db_instance_class       = var.db_instance_class
+  allocated_storage       = var.db_allocated_storage
+  backup_retention_period = var.db_backup_retention
+  deletion_protection     = var.environment == "prod" ? true : false
+  skip_final_snapshot     = var.environment == "prod" ? false : true
+
+  # High Availability Configuration
+  multi_az                    = var.db_multi_az
+  create_read_replica         = var.db_create_read_replica
+  read_replica_count          = var.db_read_replica_count
+  read_replica_instance_class = var.db_read_replica_instance_class
+  replica_availability_zones  = var.db_replica_availability_zones
+
+  # Performance Configuration
+  iops                           = var.db_iops
+  performance_insights_retention = var.environment == "prod" ? 31 : 7
+
+  # Monitoring Configuration
+  sns_topic_arn     = var.db_monitoring_sns_topic_arn
+  apply_immediately = var.db_apply_immediately
+
+  # Multi-Region Disaster Recovery Configuration
+  enable_cross_region_dr      = var.db_enable_cross_region_dr
+  dr_region                   = var.dr_region
+  dr_instance_class           = var.db_dr_instance_class
+  dr_multi_az                 = var.db_dr_multi_az
+  enable_cross_region_backups = var.db_enable_cross_region_backups
+
+  tags = var.tags
 }
 
 # Configure Kubernetes and Helm providers after EKS cluster is created
@@ -168,8 +210,8 @@ resource "aws_iam_role" "aws_load_balancer_controller" {
         }
         Condition = {
           StringEquals = {
-            "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:sub": "system:serviceaccount:kube-system:aws-load-balancer-controller"
-            "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:aud": "sts.amazonaws.com"
+            "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:sub" : "system:serviceaccount:kube-system:aws-load-balancer-controller"
+            "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:aud" : "sts.amazonaws.com"
           }
         }
       }
@@ -191,17 +233,17 @@ resource "aws_iam_role_policy" "aws_load_balancer_controller" {
 module "argocd" {
   source = "./modules/argocd"
 
-  cluster_name           = local.cluster_name
+  cluster_name          = local.cluster_name
   argocd_domain         = "argocd.${var.project_name}.com" # Update with your domain
   admin_password        = local.argocd_admin_password
   admin_password_bcrypt = bcrypt(local.argocd_admin_password)
   server_insecure       = true # Set to false in production with proper TLS
-  ha_mode              = var.environment == "prod" ? true : false
-  enable_metrics       = var.enable_monitoring
-  enable_ingress       = false # Enable when you have a proper domain and SSL cert
-  oidc_provider_arn    = module.eks.oidc_provider_arn
-  oidc_issuer_url      = module.eks.cluster_oidc_issuer_url
-  tags                 = var.tags
+  ha_mode               = var.environment == "prod" ? true : false
+  enable_metrics        = var.enable_monitoring
+  enable_ingress        = false # Enable when you have a proper domain and SSL cert
+  oidc_provider_arn     = module.eks.oidc_provider_arn
+  oidc_issuer_url       = module.eks.cluster_oidc_issuer_url
+  tags                  = var.tags
 
   depends_on = [
     module.eks,
@@ -216,18 +258,18 @@ module "monitoring" {
   source = "./modules/monitoring"
 
   cluster_name           = local.cluster_name
-  aws_region            = var.region
-  ha_mode               = var.environment == "prod" ? true : false
-  enable_grafana        = true
-  enable_alertmanager   = true
-  enable_ingress        = false # Enable when you have proper domains and SSL certs
-  grafana_domain        = "grafana.${var.project_name}.com"
-  prometheus_domain     = "prometheus.${var.project_name}.com"
-  alertmanager_domain   = "alertmanager.${var.project_name}.com"
+  aws_region             = var.region
+  ha_mode                = var.environment == "prod" ? true : false
+  enable_grafana         = true
+  enable_alertmanager    = true
+  enable_ingress         = false # Enable when you have proper domains and SSL certs
+  grafana_domain         = "grafana.${var.project_name}.com"
+  prometheus_domain      = "prometheus.${var.project_name}.com"
+  alertmanager_domain    = "alertmanager.${var.project_name}.com"
   grafana_admin_password = local.grafana_admin_password
-  oidc_provider_arn     = module.eks.oidc_provider_arn
-  oidc_issuer_url       = module.eks.cluster_oidc_issuer_url
-  tags                  = var.tags
+  oidc_provider_arn      = module.eks.oidc_provider_arn
+  oidc_issuer_url        = module.eks.cluster_oidc_issuer_url
+  tags                   = var.tags
 
   depends_on = [
     module.eks,
@@ -237,11 +279,11 @@ module "monitoring" {
 
 # External Secrets Operator for AWS Secrets Manager integration
 resource "helm_release" "external_secrets" {
-  name       = "external-secrets"
-  repository = "https://charts.external-secrets.io"
-  chart      = "external-secrets"
-  version    = "0.9.11"
-  namespace  = "external-secrets-system"
+  name             = "external-secrets"
+  repository       = "https://charts.external-secrets.io"
+  chart            = "external-secrets"
+  version          = "0.9.11"
+  namespace        = "external-secrets-system"
   create_namespace = true
 
   set {
@@ -269,8 +311,8 @@ resource "aws_iam_role" "external_secrets" {
         }
         Condition = {
           StringEquals = {
-            "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:sub": "system:serviceaccount:external-secrets-system:external-secrets"
-            "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:aud": "sts.amazonaws.com"
+            "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:sub" : "system:serviceaccount:external-secrets-system:external-secrets"
+            "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:aud" : "sts.amazonaws.com"
           }
         }
       }
@@ -305,38 +347,38 @@ resource "aws_iam_role_policy" "external_secrets" {
 
 # Create EKS add-ons
 resource "aws_eks_addon" "coredns" {
-  cluster_name             = module.eks.cluster_name
-  addon_name               = "coredns"
-  addon_version            = "v1.10.1-eksbuild.5"
+  cluster_name                = module.eks.cluster_name
+  addon_name                  = "coredns"
+  addon_version               = "v1.10.1-eksbuild.5"
   resolve_conflicts_on_create = "OVERWRITE"
 
   depends_on = [module.eks]
 }
 
 resource "aws_eks_addon" "kube_proxy" {
-  cluster_name             = module.eks.cluster_name
-  addon_name               = "kube-proxy"
-  addon_version            = "v1.28.2-eksbuild.2"
+  cluster_name                = module.eks.cluster_name
+  addon_name                  = "kube-proxy"
+  addon_version               = "v1.28.2-eksbuild.2"
   resolve_conflicts_on_create = "OVERWRITE"
 
   depends_on = [module.eks]
 }
 
 resource "aws_eks_addon" "vpc_cni" {
-  cluster_name             = module.eks.cluster_name
-  addon_name               = "vpc-cni"
-  addon_version            = "v1.15.4-eksbuild.1"
+  cluster_name                = module.eks.cluster_name
+  addon_name                  = "vpc-cni"
+  addon_version               = "v1.15.4-eksbuild.1"
   resolve_conflicts_on_create = "OVERWRITE"
 
   depends_on = [module.eks]
 }
 
 resource "aws_eks_addon" "ebs_csi_driver" {
-  cluster_name             = module.eks.cluster_name
-  addon_name               = "aws-ebs-csi-driver"
-  addon_version            = "v1.25.0-eksbuild.1"
+  cluster_name                = module.eks.cluster_name
+  addon_name                  = "aws-ebs-csi-driver"
+  addon_version               = "v1.25.0-eksbuild.1"
   resolve_conflicts_on_create = "OVERWRITE"
-  service_account_role_arn = aws_iam_role.ebs_csi_driver.arn
+  service_account_role_arn    = aws_iam_role.ebs_csi_driver.arn
 
   depends_on = [module.eks]
 }
@@ -356,8 +398,8 @@ resource "aws_iam_role" "ebs_csi_driver" {
         }
         Condition = {
           StringEquals = {
-            "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:sub": "system:serviceaccount:kube-system:ebs-csi-controller-sa"
-            "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:aud": "sts.amazonaws.com"
+            "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:sub" : "system:serviceaccount:kube-system:ebs-csi-controller-sa"
+            "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:aud" : "sts.amazonaws.com"
           }
         }
       }

@@ -1,0 +1,24 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: argocd-alerts
+  namespace: monitoring
+spec:
+  groups:
+  - name: argocd
+    rules:
+    - alert: ArgoCDAppOutOfSync
+      for: 5m  # Strict monitoring for production
+      labels:
+        severity: warning
+        environment: production
+        team: platform
+$patch: merge
+    - alert: ArgoCDAppUnhealthy
+      for: 5m
+      labels:
+        severity: critical
+        environment: production
+        team: platform
+        pagerduty: "true"  # Page on-call for production issues
+$patch: merge

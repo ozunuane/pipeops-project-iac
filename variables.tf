@@ -88,6 +88,85 @@ variable "db_backup_retention" {
   default     = 30
 }
 
+variable "db_multi_az" {
+  description = "Enable Multi-AZ deployment for RDS high availability"
+  type        = bool
+  default     = true
+}
+
+variable "db_create_read_replica" {
+  description = "Create read replicas for RDS"
+  type        = bool
+  default     = false
+}
+
+variable "db_read_replica_count" {
+  description = "Number of read replicas to create"
+  type        = number
+  default     = 1
+}
+
+variable "db_read_replica_instance_class" {
+  description = "Instance class for read replicas"
+  type        = string
+  default     = "db.r6g.large"
+}
+
+variable "db_replica_availability_zones" {
+  description = "Availability zones for read replicas"
+  type        = list(string)
+  default     = []
+}
+
+variable "db_iops" {
+  description = "The amount of provisioned IOPS for gp3 storage"
+  type        = number
+  default     = null
+}
+
+variable "db_monitoring_sns_topic_arn" {
+  description = "SNS topic ARN for RDS CloudWatch alarms"
+  type        = string
+  default     = ""
+}
+
+variable "db_apply_immediately" {
+  description = "Apply RDS changes immediately instead of during maintenance window"
+  type        = bool
+  default     = false
+}
+
+# Multi-Region Disaster Recovery Variables
+variable "dr_region" {
+  description = "AWS region for disaster recovery (if different from primary)"
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "db_enable_cross_region_dr" {
+  description = "Enable cross-region disaster recovery with read replica in DR region"
+  type        = bool
+  default     = false
+}
+
+variable "db_dr_instance_class" {
+  description = "Instance class for DR replica"
+  type        = string
+  default     = "db.r6g.large"
+}
+
+variable "db_dr_multi_az" {
+  description = "Enable Multi-AZ for DR replica (recommended for production)"
+  type        = bool
+  default     = true
+}
+
+variable "db_enable_cross_region_backups" {
+  description = "Enable automated backup replication to DR region"
+  type        = bool
+  default     = false
+}
+
 variable "tags" {
   description = "Common tags for all resources"
   type        = map(string)

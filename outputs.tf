@@ -66,6 +66,52 @@ output "rds_secrets_manager_secret_arn" {
   value       = module.rds.secrets_manager_secret_arn
 }
 
+output "rds_multi_az_enabled" {
+  description = "Whether RDS Multi-AZ is enabled"
+  value       = module.rds.db_instance_multi_az
+}
+
+output "rds_read_replica_endpoints" {
+  description = "List of RDS read replica endpoints"
+  value       = module.rds.db_read_replica_endpoints
+}
+
+output "rds_read_replica_count" {
+  description = "Number of RDS read replicas"
+  value       = module.rds.db_read_replica_count
+}
+
+output "rds_cloudwatch_alarms" {
+  description = "ARNs of RDS CloudWatch alarms"
+  value       = module.rds.cloudwatch_alarm_arns
+}
+
+# Multi-Region DR Outputs
+output "rds_dr_enabled" {
+  description = "Whether multi-region DR is enabled"
+  value       = module.rds.dr_replica_enabled
+}
+
+output "rds_dr_endpoint" {
+  description = "DR replica endpoint"
+  value       = module.rds.dr_replica_endpoint
+}
+
+output "rds_dr_region" {
+  description = "DR region"
+  value       = module.rds.dr_replica_region
+}
+
+output "rds_dr_multi_az" {
+  description = "Whether DR replica is Multi-AZ"
+  value       = module.rds.dr_replica_multi_az
+}
+
+output "rds_cross_region_backups_enabled" {
+  description = "Whether cross-region backup replication is enabled"
+  value       = module.rds.cross_region_backups_enabled
+}
+
 # ArgoCD Outputs
 output "argocd_namespace" {
   description = "ArgoCD namespace"
@@ -124,10 +170,10 @@ output "argocd_login_command" {
 output "quick_start_commands" {
   description = "Quick start commands after deployment"
   value = {
-    "1_configure_kubectl" = "aws eks update-kubeconfig --region ${var.region} --name ${module.eks.cluster_name}"
-    "2_port_forward_argocd" = "kubectl port-forward svc/argocd-server -n argocd 8080:80"
-    "3_argocd_admin_password" = "echo '${local.argocd_admin_password}'"
-    "4_port_forward_grafana" = var.enable_monitoring ? "kubectl port-forward svc/grafana -n monitoring 3000:80" : "Monitoring not enabled"
+    "1_configure_kubectl"      = "aws eks update-kubeconfig --region ${var.region} --name ${module.eks.cluster_name}"
+    "2_port_forward_argocd"    = "kubectl port-forward svc/argocd-server -n argocd 8080:80"
+    "3_argocd_admin_password"  = "echo '${local.argocd_admin_password}'"
+    "4_port_forward_grafana"   = var.enable_monitoring ? "kubectl port-forward svc/grafana -n monitoring 3000:80" : "Monitoring not enabled"
     "5_grafana_admin_password" = var.enable_monitoring ? "echo '${local.grafana_admin_password}'" : "Monitoring not enabled"
   }
   sensitive = true
@@ -138,10 +184,10 @@ output "cost_optimization_notes" {
   description = "Cost optimization recommendations"
   value = {
     "eks_node_groups" = "Consider using Spot instances for non-production workloads"
-    "rds" = "Enable automated backups with appropriate retention periods"
-    "monitoring" = "Use CloudWatch Container Insights for cost-effective monitoring"
-    "storage" = "Use gp3 volumes for better price-performance ratio"
-    "nat_gateway" = "Consider using NAT instances for lower cost in development"
-    "load_balancers" = "Use Application Load Balancers efficiently with multiple services"
+    "rds"             = "Enable automated backups with appropriate retention periods"
+    "monitoring"      = "Use CloudWatch Container Insights for cost-effective monitoring"
+    "storage"         = "Use gp3 volumes for better price-performance ratio"
+    "nat_gateway"     = "Consider using NAT instances for lower cost in development"
+    "load_balancers"  = "Use Application Load Balancers efficiently with multiple services"
   }
 }

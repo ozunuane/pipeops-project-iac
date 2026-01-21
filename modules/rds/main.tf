@@ -1,4 +1,4 @@
-# RDS PostgreSQL instance
+# RDS PostgreSQL instance with Multi-AZ support
 resource "aws_db_instance" "main" {
   identifier = "${var.project_name}-${var.environment}-postgres"
 
@@ -7,12 +7,16 @@ resource "aws_db_instance" "main" {
   engine_version = var.postgres_version
   instance_class = var.db_instance_class
 
+  # High Availability - Multi-AZ deployment
+  multi_az = var.multi_az
+
   # Storage
   allocated_storage     = var.allocated_storage
   max_allocated_storage = var.max_allocated_storage
   storage_type          = "gp3"
   storage_encrypted     = true
   kms_key_id            = aws_kms_key.rds.arn
+  iops                  = var.iops
 
   # Database name and credentials
   db_name  = var.database_name
@@ -26,30 +30,91 @@ resource "aws_db_instance" "main" {
   port                   = 5432
 
   # Backup & Maintenance
-  backup_retention_period   = var.backup_retention_period
-  backup_window            = "03:00-04:00"
-  maintenance_window       = "Mon:04:00-Mon:05:00"
+  backup_retention_period    = var.backup_retention_period
+  backup_window              = "03:00-04:00"
+  maintenance_window         = "Mon:04:00-Mon:05:00"
   auto_minor_version_upgrade = true
-  deletion_protection      = var.deletion_protection
+  deletion_protection        = var.deletion_protection
+  apply_immediately          = var.apply_immediately
+
+  # Parameter and Option Groups
+  parameter_group_name = aws_db_parameter_group.main.name
+  option_group_name    = aws_db_option_group.main.name
 
   # Monitoring
-  monitoring_interval = 60
-  monitoring_role_arn = aws_iam_role.rds_monitoring.arn
+  monitoring_interval             = 60
+  monitoring_role_arn             = aws_iam_role.rds_monitoring.arn
   enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
 
   # Performance Insights
   performance_insights_enabled          = true
-  performance_insights_kms_key_id      = aws_kms_key.rds.arn
-  performance_insights_retention_period = 7
+  performance_insights_kms_key_id       = aws_kms_key.rds.arn
+  performance_insights_retention_period = var.performance_insights_retention
 
   # Enhanced monitoring
-  copy_tags_to_snapshot = true
-  skip_final_snapshot   = var.skip_final_snapshot
+  copy_tags_to_snapshot     = true
+  skip_final_snapshot       = var.skip_final_snapshot
   final_snapshot_identifier = var.skip_final_snapshot ? null : "${var.project_name}-${var.environment}-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}"
 
   tags = merge(var.tags, {
-    Name = "${var.project_name}-${var.environment}-postgres"
+    Name        = "${var.project_name}-${var.environment}-postgres"
+    Role        = "primary"
+    Environment = var.environment
   })
+}
+
+# Read Replicas for load distribution and additional HA
+resource "aws_db_instance" "read_replica" {
+  count = var.create_read_replica ? var.read_replica_count : 0
+
+  identifier          = "${var.project_name}-${var.environment}-postgres-replica-${count.index + 1}"
+  replicate_source_db = aws_db_instance.main.identifier
+  instance_class      = var.read_replica_instance_class
+
+  # Place replicas in different AZs for additional redundancy
+  availability_zone = length(var.replica_availability_zones) > 0 ? element(var.replica_availability_zones, count.index) : null
+
+  # Storage
+  storage_type      = "gp3"
+  storage_encrypted = true
+  iops              = var.iops
+
+  # Network & Security
+  publicly_accessible    = false
+  vpc_security_group_ids = [aws_security_group.rds.id]
+
+  # Monitoring
+  monitoring_interval             = 60
+  monitoring_role_arn             = aws_iam_role.rds_monitoring.arn
+  enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
+
+  # Performance Insights
+  performance_insights_enabled          = true
+  performance_insights_kms_key_id       = aws_kms_key.rds.arn
+  performance_insights_retention_period = var.performance_insights_retention
+
+  # Backup settings (replicas can be promoted to standalone)
+  backup_retention_period = var.backup_retention_period
+
+  # Parameter and Option Groups
+  parameter_group_name = aws_db_parameter_group.main.name
+  option_group_name    = aws_db_option_group.main.name
+
+  # Apply changes
+  apply_immediately          = var.apply_immediately
+  auto_minor_version_upgrade = true
+
+  # Snapshots
+  copy_tags_to_snapshot = true
+  skip_final_snapshot   = true
+
+  tags = merge(var.tags, {
+    Name        = "${var.project_name}-${var.environment}-postgres-replica-${count.index + 1}"
+    Role        = "read-replica"
+    Environment = var.environment
+  })
+
+  depends_on = [aws_db_instance.main]
 }
 
 # Security Group for RDS
@@ -163,10 +228,10 @@ resource "aws_db_parameter_group" "main" {
 
 # Option group (not typically used with PostgreSQL, but keeping for consistency)
 resource "aws_db_option_group" "main" {
-  name                 = "${var.project_name}-${var.environment}-postgres-options"
+  name                     = "${var.project_name}-${var.environment}-postgres-options"
   option_group_description = "Option group for ${var.project_name} ${var.environment} PostgreSQL"
-  engine_name          = "postgres"
-  major_engine_version = "15"
+  engine_name              = "postgres"
+  major_engine_version     = "15"
 
   tags = var.tags
 }
@@ -202,5 +267,362 @@ resource "aws_secretsmanager_secret_version" "db_credentials" {
     endpoint = aws_db_instance.main.endpoint
     port     = aws_db_instance.main.port
     dbname   = var.database_name
+    read_replicas = var.create_read_replica ? [
+      for replica in aws_db_instance.read_replica : {
+        endpoint = replica.endpoint
+        id       = replica.identifier
+      }
+    ] : []
   })
+}
+
+# CloudWatch Alarms for proactive monitoring
+resource "aws_cloudwatch_metric_alarm" "database_cpu" {
+  count = var.sns_topic_arn != "" ? 1 : 0
+
+  alarm_name          = "${var.project_name}-${var.environment}-rds-cpu-utilization"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/RDS"
+  period              = "300"
+  statistic           = "Average"
+  threshold           = "80"
+  alarm_description   = "This metric monitors RDS CPU utilization"
+  alarm_actions       = [var.sns_topic_arn]
+  ok_actions          = [var.sns_topic_arn]
+
+  dimensions = {
+    DBInstanceIdentifier = aws_db_instance.main.id
+  }
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "database_memory" {
+  count = var.sns_topic_arn != "" ? 1 : 0
+
+  alarm_name          = "${var.project_name}-${var.environment}-rds-freeable-memory"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "FreeableMemory"
+  namespace           = "AWS/RDS"
+  period              = "300"
+  statistic           = "Average"
+  threshold           = "1000000000" # 1GB in bytes
+  alarm_description   = "This metric monitors RDS freeable memory"
+  alarm_actions       = [var.sns_topic_arn]
+  ok_actions          = [var.sns_topic_arn]
+
+  dimensions = {
+    DBInstanceIdentifier = aws_db_instance.main.id
+  }
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "database_storage" {
+  count = var.sns_topic_arn != "" ? 1 : 0
+
+  alarm_name          = "${var.project_name}-${var.environment}-rds-free-storage"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "FreeStorageSpace"
+  namespace           = "AWS/RDS"
+  period              = "300"
+  statistic           = "Average"
+  threshold           = "10000000000" # 10GB in bytes
+  alarm_description   = "This metric monitors RDS free storage space"
+  alarm_actions       = [var.sns_topic_arn]
+  ok_actions          = [var.sns_topic_arn]
+
+  dimensions = {
+    DBInstanceIdentifier = aws_db_instance.main.id
+  }
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "database_connections" {
+  count = var.sns_topic_arn != "" ? 1 : 0
+
+  alarm_name          = "${var.project_name}-${var.environment}-rds-database-connections"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "DatabaseConnections"
+  namespace           = "AWS/RDS"
+  period              = "300"
+  statistic           = "Average"
+  threshold           = "80"
+  alarm_description   = "This metric monitors RDS database connections"
+  alarm_actions       = [var.sns_topic_arn]
+  ok_actions          = [var.sns_topic_arn]
+
+  dimensions = {
+    DBInstanceIdentifier = aws_db_instance.main.id
+  }
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "database_replica_lag" {
+  count = var.create_read_replica && var.sns_topic_arn != "" ? var.read_replica_count : 0
+
+  alarm_name          = "${var.project_name}-${var.environment}-rds-replica-lag-${count.index + 1}"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "ReplicaLag"
+  namespace           = "AWS/RDS"
+  period              = "300"
+  statistic           = "Average"
+  threshold           = "1000" # 1 second in milliseconds
+  alarm_description   = "This metric monitors RDS read replica lag"
+  alarm_actions       = [var.sns_topic_arn]
+  ok_actions          = [var.sns_topic_arn]
+
+  dimensions = {
+    DBInstanceIdentifier = aws_db_instance.read_replica[count.index].id
+  }
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "database_burst_balance" {
+  count = var.sns_topic_arn != "" ? 1 : 0
+
+  alarm_name          = "${var.project_name}-${var.environment}-rds-burst-balance"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "BurstBalance"
+  namespace           = "AWS/RDS"
+  period              = "300"
+  statistic           = "Average"
+  threshold           = "20"
+  alarm_description   = "This metric monitors RDS burst balance for gp3 volumes"
+  alarm_actions       = [var.sns_topic_arn]
+  ok_actions          = [var.sns_topic_arn]
+
+  dimensions = {
+    DBInstanceIdentifier = aws_db_instance.main.id
+  }
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "database_read_latency" {
+  count = var.sns_topic_arn != "" ? 1 : 0
+
+  alarm_name          = "${var.project_name}-${var.environment}-rds-read-latency"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "ReadLatency"
+  namespace           = "AWS/RDS"
+  period              = "300"
+  statistic           = "Average"
+  threshold           = "0.1" # 100ms
+  alarm_description   = "This metric monitors RDS read latency"
+  alarm_actions       = [var.sns_topic_arn]
+
+  dimensions = {
+    DBInstanceIdentifier = aws_db_instance.main.id
+  }
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "database_write_latency" {
+  count = var.sns_topic_arn != "" ? 1 : 0
+
+  alarm_name          = "${var.project_name}-${var.environment}-rds-write-latency"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "WriteLatency"
+  namespace           = "AWS/RDS"
+  period              = "300"
+  statistic           = "Average"
+  threshold           = "0.1" # 100ms
+  alarm_description   = "This metric monitors RDS write latency"
+  alarm_actions       = [var.sns_topic_arn]
+
+  dimensions = {
+    DBInstanceIdentifier = aws_db_instance.main.id
+  }
+
+  tags = var.tags
+}
+
+# ==========================================
+# MULTI-REGION DISASTER RECOVERY
+# ==========================================
+
+# KMS key for DR region encryption
+resource "aws_kms_key" "rds_dr" {
+  count = var.enable_cross_region_dr && var.dr_kms_key_id == "" ? 1 : 0
+
+  provider = aws.disaster_recovery
+
+  description             = "KMS key for RDS DR encryption in ${var.dr_region}"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+
+  tags = merge(var.tags, {
+    Name   = "${var.project_name}-${var.environment}-rds-dr-key"
+    Region = var.dr_region
+    Role   = "disaster-recovery"
+  })
+}
+
+resource "aws_kms_alias" "rds_dr" {
+  count = var.enable_cross_region_dr && var.dr_kms_key_id == "" ? 1 : 0
+
+  provider = aws.disaster_recovery
+
+  name          = "alias/${var.project_name}-${var.environment}-rds-dr"
+  target_key_id = aws_kms_key.rds_dr[0].key_id
+}
+
+# Cross-region read replica for disaster recovery
+resource "aws_db_instance" "cross_region_replica" {
+  count = var.enable_cross_region_dr ? 1 : 0
+
+  provider = aws.disaster_recovery
+
+  identifier          = "${var.project_name}-${var.environment}-postgres-dr"
+  replicate_source_db = aws_db_instance.main.arn
+  instance_class      = var.dr_instance_class
+
+  # Multi-AZ in DR region for additional redundancy
+  multi_az = var.dr_multi_az
+
+  # Storage encryption
+  storage_encrypted = true
+  kms_key_id        = var.dr_kms_key_id != "" ? var.dr_kms_key_id : aws_kms_key.rds_dr[0].arn
+
+  # Network
+  publicly_accessible = false
+
+  # Backup configuration (can be promoted to standalone)
+  backup_retention_period = var.backup_retention_period
+
+  # Parameter and Option Groups (will be created from source)
+  auto_minor_version_upgrade = true
+
+  # Monitoring
+  monitoring_interval             = 60
+  monitoring_role_arn             = aws_iam_role.rds_monitoring.arn
+  enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
+
+  # Performance Insights
+  performance_insights_enabled          = true
+  performance_insights_kms_key_id       = var.dr_kms_key_id != "" ? var.dr_kms_key_id : aws_kms_key.rds_dr[0].arn
+  performance_insights_retention_period = var.performance_insights_retention
+
+  # Snapshots
+  copy_tags_to_snapshot     = true
+  skip_final_snapshot       = false
+  final_snapshot_identifier = "${var.project_name}-${var.environment}-dr-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}"
+
+  # Apply changes
+  apply_immediately = var.apply_immediately
+
+  tags = merge(var.tags, {
+    Name        = "${var.project_name}-${var.environment}-postgres-dr"
+    Role        = "disaster-recovery"
+    Region      = var.dr_region
+    Environment = var.environment
+  })
+
+  depends_on = [aws_db_instance.main]
+}
+
+# Cross-region automated backup replication
+resource "aws_db_instance_automated_backups_replication" "cross_region" {
+  count = var.enable_cross_region_backups ? 1 : 0
+
+  provider = aws.disaster_recovery
+
+  source_db_instance_arn = aws_db_instance.main.arn
+  kms_key_id             = var.dr_kms_key_id != "" ? var.dr_kms_key_id : aws_kms_key.rds_dr[0].arn
+  retention_period       = var.backup_retention_period
+}
+
+# CloudWatch alarms for DR replica (if enabled)
+resource "aws_cloudwatch_metric_alarm" "dr_replica_lag" {
+  count = var.enable_cross_region_dr && var.sns_topic_arn != "" ? 1 : 0
+
+  provider = aws.disaster_recovery
+
+  alarm_name          = "${var.project_name}-${var.environment}-rds-dr-replica-lag"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "3"
+  metric_name         = "ReplicaLag"
+  namespace           = "AWS/RDS"
+  period              = "300"
+  statistic           = "Average"
+  threshold           = "30000" # 30 seconds (cross-region can have higher lag)
+  alarm_description   = "This metric monitors DR replica lag (cross-region)"
+  alarm_actions       = [var.sns_topic_arn]
+  ok_actions          = [var.sns_topic_arn]
+
+  dimensions = {
+    DBInstanceIdentifier = aws_db_instance.cross_region_replica[0].id
+  }
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "dr_replica_cpu" {
+  count = var.enable_cross_region_dr && var.sns_topic_arn != "" ? 1 : 0
+
+  provider = aws.disaster_recovery
+
+  alarm_name          = "${var.project_name}-${var.environment}-rds-dr-cpu"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/RDS"
+  period              = "300"
+  statistic           = "Average"
+  threshold           = "80"
+  alarm_description   = "This metric monitors DR replica CPU utilization"
+  alarm_actions       = [var.sns_topic_arn]
+  ok_actions          = [var.sns_topic_arn]
+
+  dimensions = {
+    DBInstanceIdentifier = aws_db_instance.cross_region_replica[0].id
+  }
+
+  tags = var.tags
+}
+
+# Update Secrets Manager with DR endpoint
+resource "aws_secretsmanager_secret_version" "db_credentials_dr" {
+  count = var.enable_cross_region_dr ? 1 : 0
+
+  secret_id = aws_secretsmanager_secret.db_credentials.id
+  secret_string = jsonencode({
+    username = var.database_username
+    password = var.database_password
+    endpoint = aws_db_instance.main.endpoint
+    port     = aws_db_instance.main.port
+    dbname   = var.database_name
+    read_replicas = var.create_read_replica ? [
+      for replica in aws_db_instance.read_replica : {
+        endpoint = replica.endpoint
+        id       = replica.identifier
+        region   = var.region
+      }
+    ] : []
+    dr_replica = {
+      endpoint = aws_db_instance.cross_region_replica[0].endpoint
+      id       = aws_db_instance.cross_region_replica[0].identifier
+      region   = var.dr_region
+      multi_az = var.dr_multi_az
+    }
+  })
+
+  depends_on = [
+    aws_secretsmanager_secret_version.db_credentials,
+    aws_db_instance.cross_region_replica
+  ]
 }

@@ -8,6 +8,12 @@ variable "environment" {
   type        = string
 }
 
+variable "region" {
+  description = "Primary AWS region"
+  type        = string
+  default     = ""
+}
+
 variable "vpc_id" {
   description = "ID of the VPC"
   type        = string
@@ -94,4 +100,95 @@ variable "tags" {
   description = "A map of tags to add to all resources"
   type        = map(string)
   default     = {}
+}
+
+variable "multi_az" {
+  description = "Enable Multi-AZ deployment for high availability"
+  type        = bool
+  default     = true
+}
+
+variable "create_read_replica" {
+  description = "Create read replicas for load distribution"
+  type        = bool
+  default     = false
+}
+
+variable "read_replica_count" {
+  description = "Number of read replicas to create"
+  type        = number
+  default     = 1
+}
+
+variable "read_replica_instance_class" {
+  description = "Instance class for read replicas"
+  type        = string
+  default     = "db.r6g.large"
+}
+
+variable "replica_availability_zones" {
+  description = "Availability zones for read replicas"
+  type        = list(string)
+  default     = []
+}
+
+variable "apply_immediately" {
+  description = "Apply changes immediately instead of during maintenance window"
+  type        = bool
+  default     = false
+}
+
+variable "sns_topic_arn" {
+  description = "SNS topic ARN for CloudWatch alarms"
+  type        = string
+  default     = ""
+}
+
+variable "performance_insights_retention" {
+  description = "Performance Insights retention period in days"
+  type        = number
+  default     = 7
+}
+
+variable "iops" {
+  description = "The amount of provisioned IOPS for gp3 storage"
+  type        = number
+  default     = null
+}
+
+# Multi-Region Disaster Recovery Variables
+variable "enable_cross_region_dr" {
+  description = "Enable cross-region disaster recovery with read replica in another region"
+  type        = bool
+  default     = false
+}
+
+variable "dr_region" {
+  description = "AWS region for disaster recovery (must be different from primary)"
+  type        = string
+  default     = ""
+}
+
+variable "dr_instance_class" {
+  description = "Instance class for DR replica"
+  type        = string
+  default     = "db.r6g.large"
+}
+
+variable "dr_multi_az" {
+  description = "Enable Multi-AZ for DR replica (recommended)"
+  type        = bool
+  default     = true
+}
+
+variable "enable_cross_region_backups" {
+  description = "Enable automated backup replication to DR region"
+  type        = bool
+  default     = false
+}
+
+variable "dr_kms_key_id" {
+  description = "KMS key ID in DR region for encryption (if not provided, will create one)"
+  type        = string
+  default     = ""
 }

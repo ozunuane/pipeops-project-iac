@@ -1,0 +1,12 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sample-app-ingress
+  namespace: default
+  annotations:
+    alb.ingress.kubernetes.io/tags: Environment=dev,Project=pipeops,ManagedBy=kubernetes,CostCenter=development
+    alb.ingress.kubernetes.io/scheme: internal  # Internal only for dev
+spec:
+  rules:
+  - host: app-dev.pipeops.internal  # Dev subdomain
+$patch: merge

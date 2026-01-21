@@ -1,0 +1,19 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: staging
+  namespace: argocd
+spec:
+  description: Applications for staging environment
+$patch: replace
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: app-of-apps-staging
+  namespace: argocd
+spec:
+  project: staging
+  source:
+    path: applications/staging
+$patch: merge

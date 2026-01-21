@@ -17,9 +17,24 @@ database_subnet_cidrs = ["10.0.201.0/24", "10.0.202.0/24", "10.0.203.0/24"]
 kubernetes_version = "1.28"
 
 # RDS Configuration
-db_instance_class     = "db.r6g.large"
-db_allocated_storage  = 100
-db_backup_retention   = 30
+db_instance_class              = "db.r6g.large"
+db_allocated_storage           = 100
+db_backup_retention            = 30
+db_multi_az                    = true    # Enable Multi-AZ for HA (recommended for prod)
+db_create_read_replica         = false   # Enable read replicas for read-heavy workloads
+db_read_replica_count          = 1       # Number of read replicas
+db_read_replica_instance_class = "db.r6g.large"
+db_replica_availability_zones  = ["us-west-2b", "us-west-2c"]  # AZs for replicas
+db_iops                        = 3000    # Provisioned IOPS for better performance (optional)
+db_monitoring_sns_topic_arn    = ""      # SNS topic for RDS alarms (create one first)
+db_apply_immediately           = false   # Apply changes during maintenance window
+
+# Multi-Region Disaster Recovery (Optional - adds significant cost)
+dr_region                      = "us-east-1"  # DR region (must be different from primary)
+db_enable_cross_region_dr      = false   # Enable DR replica in another region
+db_dr_instance_class           = "db.r6g.large"  # DR instance size
+db_dr_multi_az                 = true    # Multi-AZ in DR region (recommended)
+db_enable_cross_region_backups = false   # Enable backup replication to DR region
 
 # Feature Flags
 enable_argocd     = true

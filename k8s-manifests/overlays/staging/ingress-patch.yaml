@@ -1,0 +1,14 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sample-app-ingress
+  namespace: default
+  annotations:
+    alb.ingress.kubernetes.io/tags: Environment=staging,Project=pipeops,ManagedBy=kubernetes,CostCenter=staging
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    # Add SSL certificate for staging
+    # alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-west-2:ACCOUNT_ID:certificate/staging-cert-id
+spec:
+  rules:
+  - host: app-staging.pipeops.com  # Staging subdomain
+$patch: merge

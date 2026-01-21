@@ -1,0 +1,14 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: argocd-alerts
+  namespace: monitoring
+spec:
+  groups:
+  - name: argocd
+    rules:
+    - alert: ArgoCDAppOutOfSync
+      for: 15m  # Longer grace period for dev
+      labels:
+        severity: info  # Lower severity for dev
+$patch: merge

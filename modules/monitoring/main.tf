@@ -23,26 +23,26 @@ resource "helm_release" "prometheus_stack" {
       defaultRules = {
         create = true
         rules = {
-          alertmanager = true
-          etcd = true
-          general = true
-          k8s = true
-          kubeApiserver = true
-          kubePrometheusNodeAlerting = true
+          alertmanager                = true
+          etcd                        = true
+          general                     = true
+          k8s                         = true
+          kubeApiserver               = true
+          kubePrometheusNodeAlerting  = true
           kubePrometheusNodeRecording = true
-          kubernetesAbsent = true
-          kubernetesApps = true
-          kubernetesResources = true
-          kubernetesStorage = true
-          kubernetesSystem = true
-          node = true
-          prometheus = true
-          prometheusOperator = true
+          kubernetesAbsent            = true
+          kubernetesApps              = true
+          kubernetesResources         = true
+          kubernetesStorage           = true
+          kubernetesSystem            = true
+          node                        = true
+          prometheus                  = true
+          prometheusOperator          = true
         }
       }
 
       alertmanager = {
-        enabled = var.enable_alertmanager
+        enabled          = var.enable_alertmanager
         fullnameOverride = "alertmanager"
 
         alertmanagerSpec = {
@@ -51,7 +51,7 @@ resource "helm_release" "prometheus_stack" {
             volumeClaimTemplate = {
               spec = {
                 storageClassName = "gp3"
-                accessModes = ["ReadWriteOnce"]
+                accessModes      = ["ReadWriteOnce"]
                 resources = {
                   requests = {
                     storage = "10Gi"
@@ -62,11 +62,11 @@ resource "helm_release" "prometheus_stack" {
           }
           resources = {
             limits = {
-              cpu = "500m"
+              cpu    = "500m"
               memory = "512Mi"
             }
             requests = {
-              cpu = "100m"
+              cpu    = "100m"
               memory = "128Mi"
             }
           }
@@ -75,36 +75,36 @@ resource "helm_release" "prometheus_stack" {
         config = {
           global = {
             smtp_smarthost = var.smtp_smarthost
-            smtp_from = var.smtp_from
-            slack_api_url = var.slack_api_url
+            smtp_from      = var.smtp_from
+            slack_api_url  = var.slack_api_url
           }
           route = {
-            group_by = ["alertname"]
-            group_wait = "10s"
-            group_interval = "10s"
+            group_by        = ["alertname"]
+            group_wait      = "10s"
+            group_interval  = "10s"
             repeat_interval = "1h"
-            receiver = "web.hook"
-            routes = var.alert_routes
+            receiver        = "web.hook"
+            routes          = var.alert_routes
           }
           receivers = var.alert_receivers
         }
 
         ingress = {
-          enabled = var.enable_ingress
+          enabled          = var.enable_ingress
           ingressClassName = "alb"
           annotations = {
-            "alb.ingress.kubernetes.io/scheme" = "internet-facing"
-            "alb.ingress.kubernetes.io/target-type" = "ip"
-            "alb.ingress.kubernetes.io/listen-ports" = "[{\"HTTPS\":443}]"
+            "alb.ingress.kubernetes.io/scheme"          = "internet-facing"
+            "alb.ingress.kubernetes.io/target-type"     = "ip"
+            "alb.ingress.kubernetes.io/listen-ports"    = "[{\"HTTPS\":443}]"
             "alb.ingress.kubernetes.io/certificate-arn" = var.ssl_certificate_arn
-            "alb.ingress.kubernetes.io/ssl-redirect" = "443"
+            "alb.ingress.kubernetes.io/ssl-redirect"    = "443"
           }
           hosts = [
             {
               host = var.alertmanager_domain
               paths = [
                 {
-                  path = "/"
+                  path     = "/"
                   pathType = "Prefix"
                 }
               ]
@@ -113,57 +113,57 @@ resource "helm_release" "prometheus_stack" {
           tls = [
             {
               secretName = "alertmanager-tls"
-              hosts = [var.alertmanager_domain]
+              hosts      = [var.alertmanager_domain]
             }
           ]
         }
       }
 
       grafana = {
-        enabled = var.enable_grafana
+        enabled          = var.enable_grafana
         fullnameOverride = "grafana"
 
         adminPassword = var.grafana_admin_password
 
-        grafana.ini = {
+        grafana_ini = {
           server = {
-            domain = var.grafana_domain
+            domain   = var.grafana_domain
             root_url = "https://${var.grafana_domain}"
           }
           security = {
-            cookie_secure = true
+            cookie_secure   = true
             cookie_samesite = "lax"
           }
           auth = {
             disable_login_form = var.enable_oauth
           }
           "auth.generic_oauth" = var.enable_oauth ? {
-            enabled = true
-            name = "AWS SSO"
-            allow_sign_up = true
-            client_id = var.oauth_client_id
-            client_secret = var.oauth_client_secret
-            scopes = "openid profile email"
-            auth_url = "${var.oauth_auth_url}/oauth2/authorize"
-            token_url = "${var.oauth_auth_url}/oauth2/token"
-            api_url = "${var.oauth_auth_url}/oauth2/userinfo"
+            enabled             = true
+            name                = "AWS SSO"
+            allow_sign_up       = true
+            client_id           = var.oauth_client_id
+            client_secret       = var.oauth_client_secret
+            scopes              = "openid profile email"
+            auth_url            = "${var.oauth_auth_url}/oauth2/authorize"
+            token_url           = "${var.oauth_auth_url}/oauth2/token"
+            api_url             = "${var.oauth_auth_url}/oauth2/userinfo"
             role_attribute_path = "contains(groups[*], 'grafana-admins') && 'Admin' || 'Viewer'"
           } : {}
         }
 
         persistence = {
-          enabled = true
+          enabled          = true
           storageClassName = "gp3"
-          size = "10Gi"
+          size             = "10Gi"
         }
 
         resources = {
           limits = {
-            cpu = "500m"
+            cpu    = "500m"
             memory = "512Mi"
           }
           requests = {
-            cpu = "100m"
+            cpu    = "100m"
             memory = "256Mi"
           }
         }
@@ -173,12 +173,12 @@ resource "helm_release" "prometheus_stack" {
             apiVersion = 1
             providers = [
               {
-                name = "default"
-                orgId = 1
-                folder = ""
-                type = "file"
+                name            = "default"
+                orgId           = 1
+                folder          = ""
+                type            = "file"
                 disableDeletion = false
-                editable = true
+                editable        = true
                 options = {
                   path = "/var/lib/grafana/dashboards/default"
                 }
@@ -190,39 +190,39 @@ resource "helm_release" "prometheus_stack" {
         dashboards = {
           default = {
             "kubernetes-cluster-monitoring" = {
-              gnetId = 7249
+              gnetId     = 7249
               datasource = "Prometheus"
             }
             "kubernetes-pod-monitoring" = {
-              gnetId = 6417
+              gnetId     = 6417
               datasource = "Prometheus"
             }
             "node-exporter" = {
-              gnetId = 1860
+              gnetId     = 1860
               datasource = "Prometheus"
             }
             "argocd" = {
-              gnetId = 14584
+              gnetId     = 14584
               datasource = "Prometheus"
             }
           }
         }
 
         ingress = {
-          enabled = var.enable_ingress
+          enabled          = var.enable_ingress
           ingressClassName = "alb"
           annotations = {
-            "alb.ingress.kubernetes.io/scheme" = "internet-facing"
-            "alb.ingress.kubernetes.io/target-type" = "ip"
-            "alb.ingress.kubernetes.io/listen-ports" = "[{\"HTTPS\":443}]"
+            "alb.ingress.kubernetes.io/scheme"          = "internet-facing"
+            "alb.ingress.kubernetes.io/target-type"     = "ip"
+            "alb.ingress.kubernetes.io/listen-ports"    = "[{\"HTTPS\":443}]"
             "alb.ingress.kubernetes.io/certificate-arn" = var.ssl_certificate_arn
-            "alb.ingress.kubernetes.io/ssl-redirect" = "443"
+            "alb.ingress.kubernetes.io/ssl-redirect"    = "443"
           }
           hosts = [var.grafana_domain]
           tls = [
             {
               secretName = "grafana-tls"
-              hosts = [var.grafana_domain]
+              hosts      = [var.grafana_domain]
             }
           ]
         }
@@ -235,19 +235,19 @@ resource "helm_release" "prometheus_stack" {
       }
 
       prometheus = {
-        enabled = true
+        enabled          = true
         fullnameOverride = "prometheus"
 
         prometheusSpec = {
-          replicas = var.ha_mode ? 2 : 1
-          retention = var.prometheus_retention
+          replicas      = var.ha_mode ? 2 : 1
+          retention     = var.prometheus_retention
           retentionSize = var.prometheus_retention_size
 
           storageSpec = {
             volumeClaimTemplate = {
               spec = {
                 storageClassName = "gp3"
-                accessModes = ["ReadWriteOnce"]
+                accessModes      = ["ReadWriteOnce"]
                 resources = {
                   requests = {
                     storage = var.prometheus_storage_size
@@ -259,11 +259,11 @@ resource "helm_release" "prometheus_stack" {
 
           resources = {
             limits = {
-              cpu = "2"
+              cpu    = "2"
               memory = "4Gi"
             }
             requests = {
-              cpu = "500m"
+              cpu    = "500m"
               memory = "2Gi"
             }
           }
@@ -281,20 +281,20 @@ resource "helm_release" "prometheus_stack" {
         }
 
         ingress = {
-          enabled = var.enable_ingress
+          enabled          = var.enable_ingress
           ingressClassName = "alb"
           annotations = {
-            "alb.ingress.kubernetes.io/scheme" = "internet-facing"
-            "alb.ingress.kubernetes.io/target-type" = "ip"
-            "alb.ingress.kubernetes.io/listen-ports" = "[{\"HTTPS\":443}]"
+            "alb.ingress.kubernetes.io/scheme"          = "internet-facing"
+            "alb.ingress.kubernetes.io/target-type"     = "ip"
+            "alb.ingress.kubernetes.io/listen-ports"    = "[{\"HTTPS\":443}]"
             "alb.ingress.kubernetes.io/certificate-arn" = var.ssl_certificate_arn
-            "alb.ingress.kubernetes.io/ssl-redirect" = "443"
+            "alb.ingress.kubernetes.io/ssl-redirect"    = "443"
           }
           hosts = [var.prometheus_domain]
           tls = [
             {
               secretName = "prometheus-tls"
-              hosts = [var.prometheus_domain]
+              hosts      = [var.prometheus_domain]
             }
           ]
         }
@@ -303,11 +303,11 @@ resource "helm_release" "prometheus_stack" {
       prometheusOperator = {
         resources = {
           limits = {
-            cpu = "500m"
+            cpu    = "500m"
             memory = "512Mi"
           }
           requests = {
-            cpu = "100m"
+            cpu    = "100m"
             memory = "256Mi"
           }
         }
@@ -343,8 +343,8 @@ resource "aws_iam_role" "grafana" {
         }
         Condition = {
           StringEquals = {
-            "${replace(var.oidc_issuer_url, "https://", "")}:sub": "system:serviceaccount:monitoring:grafana"
-            "${replace(var.oidc_issuer_url, "https://", "")}:aud": "sts.amazonaws.com"
+            "${replace(var.oidc_issuer_url, "https://", "")}:sub" : "system:serviceaccount:monitoring:grafana"
+            "${replace(var.oidc_issuer_url, "https://", "")}:aud" : "sts.amazonaws.com"
           }
         }
       }
@@ -408,7 +408,7 @@ resource "kubernetes_config_map" "cwagentconfig" {
       logs = {
         metrics_collected = {
           kubernetes = {
-            cluster_name = var.cluster_name
+            cluster_name                = var.cluster_name
             metrics_collection_interval = 60
           }
         }
