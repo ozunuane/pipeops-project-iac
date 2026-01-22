@@ -86,7 +86,7 @@ jobs:
     strategy:
       matrix:
         environment: ${{ fromJson(needs.determine-environments.outputs.environments) }}
-      max-parallel: 1  # Deploy one environment at a time
+      max-parallel: 3  # Allow all environments to run in parallel (each has separate resources)
       fail-fast: false
     
     environment:

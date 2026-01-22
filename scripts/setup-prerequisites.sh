@@ -266,7 +266,7 @@ EOF
 EOF
 )
     
-    # Create role if it doesn't exist
+    # Create role if it doesn't exist, or update trust policy if it does
     if ! aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
         aws iam create-role \
             --role-name "$ROLE_NAME" \
@@ -290,6 +290,13 @@ EOF
         log_info "Allowed contexts: All branches, PRs, and workflow dispatches"
     else
         log_info "GitHub Actions OIDC role already exists: $ROLE_NAME"
+        log_info "Updating trust policy to ensure correct GitHub repository access..."
+        aws iam update-assume-role-policy \
+            --role-name "$ROLE_NAME" \
+            --policy-document "$TRUST_POLICY"
+        log_success "Trust policy updated for: $ROLE_NAME"
+        log_info "Allowed repository: ${GITHUB_ORG}/${GITHUB_REPO}"
+        log_info "Allowed contexts: All branches, PRs, and workflow dispatches"
     fi
     
     ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${ROLE_NAME}"
