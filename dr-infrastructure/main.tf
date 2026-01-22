@@ -25,7 +25,7 @@ provider "aws" {
 # Local values for consistent naming
 locals {
   dr_cluster_name = "${var.project_name}-${var.primary_environment}-dr-eks"
-  
+
   # Reference to primary region for cross-region resources
   primary_region = var.primary_region
 }
@@ -47,7 +47,7 @@ module "dr_vpc" {
   private_subnet_cidrs  = var.dr_private_subnet_cidrs
   database_subnet_cidrs = var.dr_database_subnet_cidrs
   cluster_name          = local.dr_cluster_name
-  
+
   tags = merge(var.tags, {
     DisasterRecovery = "true"
     DRRegion         = var.dr_region

@@ -44,9 +44,9 @@ dr_public_subnet_cidrs                  = ["10.1.101.0/24", "10.1.102.0/24", "10
 dr_private_subnet_cidrs                 = ["10.1.1.0/24", "10.1.2.0/24", "10.1.3.0/24"]
 dr_database_subnet_cidrs                = ["10.1.201.0/24", "10.1.202.0/24", "10.1.203.0/24"]
 dr_cluster_endpoint_public_access_cidrs = ["0.0.0.0/0"] # Restrict in production
-dr_desired_capacity                     = 2              # Standby mode - minimal nodes
+dr_desired_capacity                     = 2             # Standby mode - minimal nodes
 dr_min_capacity                         = 2
-dr_max_capacity                         = 6              # Can scale up during DR activation
+dr_max_capacity                         = 6                         # Can scale up during DR activation
 dr_node_instance_types                  = ["t3.medium", "t3.large"] # Cost-optimized for standby
 
 # Feature Flags

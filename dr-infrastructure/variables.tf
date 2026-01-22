@@ -104,7 +104,7 @@ variable "dr_cluster_mode" {
   description = "DR cluster operational mode"
   type        = string
   default     = "standby"
-  
+
   validation {
     condition     = contains(["standby", "active", "warm"], var.dr_cluster_mode)
     error_message = "DR cluster mode must be one of: standby, active, warm"

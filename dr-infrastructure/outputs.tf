@@ -68,12 +68,12 @@ output "dr_kubectl_config_command" {
 output "dr_cluster_info" {
   description = "DR cluster information summary"
   value = {
-    cluster_name  = module.dr_eks.cluster_name
-    region        = var.dr_region
-    vpc_cidr      = var.dr_vpc_cidr
-    node_count    = "${var.dr_min_capacity}-${var.dr_max_capacity}"
-    mode          = var.dr_cluster_mode
-    primary_env   = var.primary_environment
+    cluster_name   = module.dr_eks.cluster_name
+    region         = var.dr_region
+    vpc_cidr       = var.dr_vpc_cidr
+    node_count     = "${var.dr_min_capacity}-${var.dr_max_capacity}"
+    mode           = var.dr_cluster_mode
+    primary_env    = var.primary_environment
     primary_region = var.primary_region
   }
 }
@@ -132,13 +132,13 @@ output "dr_rds_security_group_id" {
 output "dr_status" {
   description = "DR infrastructure deployment status"
   value = {
-    deployed           = true
-    region             = var.dr_region
-    cluster_mode       = var.dr_cluster_mode
-    vpc_id             = module.dr_vpc.vpc_id
-    cluster_name       = module.dr_eks.cluster_name
-    rds_replica_enabled = var.enable_rds_dr_replica && var.primary_rds_arn != ""
+    deployed             = true
+    region               = var.dr_region
+    cluster_mode         = var.dr_cluster_mode
+    vpc_id               = module.dr_vpc.vpc_id
+    cluster_name         = module.dr_eks.cluster_name
+    rds_replica_enabled  = var.enable_rds_dr_replica && var.primary_rds_arn != ""
     rds_replica_endpoint = var.enable_rds_dr_replica && var.primary_rds_arn != "" ? aws_db_instance.dr_replica[0].endpoint : "Not deployed"
-    ready_for_failover = var.dr_cluster_mode == "standby" ? "Requires scale-up" : "Ready"
+    ready_for_failover   = var.dr_cluster_mode == "standby" ? "Requires scale-up" : "Ready"
   }
 }
