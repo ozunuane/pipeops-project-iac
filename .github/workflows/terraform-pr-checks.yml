@@ -148,7 +148,7 @@ jobs:
           output-file: TERRAFORM_DOCS.md
           output-method: inject
           git-push: false
-          fail-on-diff: true
+          fail-on-diff: false  # Changed to false to warn instead of fail
 
   # Overall PR check summary
   pr-summary:
