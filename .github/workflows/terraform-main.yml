@@ -123,10 +123,27 @@ jobs:
           fi
           echo "Backend region: $(cat $GITHUB_OUTPUT | grep region | cut -d'=' -f2)"
 
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials (Dev)
+        if: matrix.environment == 'dev'
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ matrix.environment == 'dev' && secrets.AWS_ROLE_ARN_DEV || matrix.environment == 'staging' && secrets.AWS_ROLE_ARN_STAGING || secrets.AWS_ROLE_ARN_PROD }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_DEV }}
+          role-session-name: github-actions-${{ matrix.environment }}-${{ github.run_id }}
+          aws-region: ${{ steps.backend-config.outputs.region }}
+
+      - name: Configure AWS credentials (Staging)
+        if: matrix.environment == 'staging'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_STAGING }}
+          role-session-name: github-actions-${{ matrix.environment }}-${{ github.run_id }}
+          aws-region: ${{ steps.backend-config.outputs.region }}
+
+      - name: Configure AWS credentials (Prod)
+        if: matrix.environment == 'prod'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_PROD }}
           role-session-name: github-actions-${{ matrix.environment }}-${{ github.run_id }}
           aws-region: ${{ steps.backend-config.outputs.region }}
 
