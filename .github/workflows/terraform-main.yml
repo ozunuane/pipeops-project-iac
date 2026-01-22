@@ -44,10 +44,12 @@ env:
   # AWS_REGION: us-west-2
   PROJECT_NAME: pipeops  # Change this for other projects
 
-# Required permissions for OIDC authentication
+# Required permissions for OIDC authentication and PR comments
 permissions:
-  id-token: write   # Required for requesting the JWT
-  contents: read    # Required for actions/checkout
+  id-token: write        # Required for requesting the JWT
+  contents: read         # Required for actions/checkout
+  issues: write          # Required for commenting on PRs/issues
+  pull-requests: write   # Required for commenting on PRs
 
 jobs:
   # Job to determine which environments should be deployed
