@@ -596,7 +596,7 @@ resource "aws_db_instance_automated_backups_replication" "cross_region" {
 
   source_db_instance_arn = aws_db_instance.main.arn
   retention_period       = var.backup_retention_period
-  
+
   # Use provided KMS key or default AWS-managed key
   kms_key_id = var.dr_kms_key_id != "" ? var.dr_kms_key_id : null
 }

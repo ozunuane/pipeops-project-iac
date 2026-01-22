@@ -125,10 +125,10 @@ module "rds" {
 
   # Cross-region DR replica is now managed by DR workspace
   # But cross-region backups are still managed here (no VPC dependency)
-  enable_cross_region_dr      = false                          # DR replica managed by DR workspace
-  enable_cross_region_backups = var.db_enable_cross_region_backups  # Backups can stay here
+  enable_cross_region_dr      = false                              # DR replica managed by DR workspace
+  enable_cross_region_backups = var.db_enable_cross_region_backups # Backups can stay here
   dr_region                   = var.dr_region
-  dr_kms_key_id               = var.db_dr_kms_key_id          # Optional: KMS key for backup encryption
+  dr_kms_key_id               = var.db_dr_kms_key_id # Optional: KMS key for backup encryption
 
   tags = var.tags
 }
