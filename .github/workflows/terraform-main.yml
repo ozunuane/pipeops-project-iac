@@ -55,27 +55,33 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       environments: ${{ steps.set-environments.outputs.environments }}
+      should_deploy: ${{ steps.set-environments.outputs.should_deploy }}
     steps:
       - name: Determine environments to deploy
         id: set-environments
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            # Manual trigger - deploy specified environment
+            # Manual trigger - deploy specified environment independently
             echo "environments=[\"${{ github.event.inputs.environment }}\"]" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            # Main branch - deploy staging and prod
-            echo "environments=[\"staging\",\"prod\"]" >> $GITHUB_OUTPUT
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
-            # Develop branch - deploy dev only
-            echo "environments=[\"dev\"]" >> $GITHUB_OUTPUT
+            # Develop branch - plan for all environments
+            echo "environments=[\"dev\",\"staging\",\"prod\"]" >> $GITHUB_OUTPUT
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            # Main branch - no automatic deployments
+            echo "environments=[]" >> $GITHUB_OUTPUT
+            echo "should_deploy=false" >> $GITHUB_OUTPUT
           else
             # PR - just plan for all environments
             echo "environments=[\"dev\",\"staging\",\"prod\"]" >> $GITHUB_OUTPUT
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
           fi
 
   # Terraform deployment for main infrastructure (dev, staging, prod)
   terraform-deploy:
     needs: determine-environments
+    if: needs.determine-environments.outputs.should_deploy == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -194,9 +200,7 @@ jobs:
             });
 
       - name: Terraform Apply
-        if: |
-          (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')) ||
-          (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply'
         run: |
           terraform apply -auto-approve tfplan-${{ matrix.environment }}
 
@@ -208,9 +212,7 @@ jobs:
             -auto-approve
 
       - name: Capture outputs
-        if: |
-          (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')) ||
-          (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply'
         id: outputs
         run: |
           echo "eks_endpoint=$(terraform output -raw eks_cluster_endpoint 2>/dev/null || echo 'N/A')" >> $GITHUB_OUTPUT
@@ -220,9 +222,7 @@ jobs:
           terraform output -json > outputs-${{ matrix.environment }}.json
 
       - name: Upload outputs
-        if: |
-          (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')) ||
-          (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply'
         uses: actions/upload-artifact@v4
         with:
           name: outputs-${{ matrix.environment }}
