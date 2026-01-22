@@ -97,12 +97,38 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Read backend configuration
+        id: backend-config
+        run: |
+          # Read region from backend.conf file
+          if [[ -f "environments/${{ matrix.environment }}/backend.conf" ]]; then
+            BACKEND_REGION=$(grep "^region" "environments/${{ matrix.environment }}/backend.conf" | awk -F'=' '{print $2}' | tr -d ' "')
+            echo "region=${BACKEND_REGION}" >> $GITHUB_OUTPUT
+          else
+            # Default regions per environment if backend.conf doesn't exist
+            case "${{ matrix.environment }}" in
+              dev)
+                echo "region=us-east-1" >> $GITHUB_OUTPUT
+                ;;
+              staging)
+                echo "region=us-west-1" >> $GITHUB_OUTPUT
+                ;;
+              prod)
+                echo "region=us-west-2" >> $GITHUB_OUTPUT
+                ;;
+              *)
+                echo "region=us-west-2" >> $GITHUB_OUTPUT
+                ;;
+            esac
+          fi
+          echo "Backend region: $(cat $GITHUB_OUTPUT | grep region | cut -d'=' -f2)"
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ matrix.environment == 'dev' && secrets.AWS_ROLE_ARN_DEV || matrix.environment == 'staging' && secrets.AWS_ROLE_ARN_STAGING || secrets.AWS_ROLE_ARN_PROD }}
           role-session-name: github-actions-${{ matrix.environment }}-${{ github.run_id }}
-          aws-region: ${{ matrix.environment == 'prod' && 'us-west-2' || 'us-west-2' }}
+          aws-region: ${{ steps.backend-config.outputs.region }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -115,16 +141,29 @@ jobs:
           echo "ENVIRONMENT=${{ matrix.environment }}" >> $GITHUB_ENV
           echo "TF_VAR_environment=${{ matrix.environment }}" >> $GITHUB_ENV
           echo "PROJECT_NAME=${{ env.PROJECT_NAME }}" >> $GITHUB_ENV
+          echo "AWS_REGION=${{ steps.backend-config.outputs.region }}" >> $GITHUB_ENV
           
-          # Set backend bucket based on environment (using PROJECT_NAME)
-          echo "BACKEND_BUCKET=${{ env.PROJECT_NAME }}-${{ matrix.environment }}-terraform-state" >> $GITHUB_ENV
-          echo "BACKEND_KEY=${{ matrix.environment }}/terraform.tfstate" >> $GITHUB_ENV
-          echo "BACKEND_DYNAMODB=${{ env.PROJECT_NAME }}-${{ matrix.environment }}-terraform-locks" >> $GITHUB_ENV
+          # Read backend config from file if it exists, otherwise use defaults
+          if [[ -f "environments/${{ matrix.environment }}/backend.conf" ]]; then
+            BACKEND_BUCKET=$(grep "^bucket" "environments/${{ matrix.environment }}/backend.conf" | awk -F'=' '{print $2}' | tr -d ' "')
+            BACKEND_KEY=$(grep "^key" "environments/${{ matrix.environment }}/backend.conf" | awk -F'=' '{print $2}' | tr -d ' "')
+            BACKEND_DYNAMODB=$(grep "^dynamodb_table" "environments/${{ matrix.environment }}/backend.conf" | awk -F'=' '{print $2}' | tr -d ' "')
+            echo "BACKEND_BUCKET=${BACKEND_BUCKET}" >> $GITHUB_ENV
+            echo "BACKEND_KEY=${BACKEND_KEY}" >> $GITHUB_ENV
+            echo "BACKEND_DYNAMODB=${BACKEND_DYNAMODB}" >> $GITHUB_ENV
+          else
+            # Default backend names if backend.conf doesn't exist
+            echo "BACKEND_BUCKET=${{ env.PROJECT_NAME }}-${{ matrix.environment }}-terraform-state" >> $GITHUB_ENV
+            echo "BACKEND_KEY=${{ matrix.environment }}/terraform.tfstate" >> $GITHUB_ENV
+            echo "BACKEND_DYNAMODB=${{ env.PROJECT_NAME }}-${{ matrix.environment }}-terraform-locks" >> $GITHUB_ENV
+          fi
 
       - name: Check if backend exists
         id: check-backend
+        env:
+          AWS_REGION: ${{ steps.backend-config.outputs.region }}
         run: |
-          if aws s3 ls s3://${BACKEND_BUCKET} 2>&1 | grep -q 'NoSuchBucket'; then
+          if aws s3 ls s3://${BACKEND_BUCKET} --region ${AWS_REGION} 2>&1 | grep -q 'NoSuchBucket'; then
             echo "backend_exists=false" >> $GITHUB_OUTPUT
           else
             echo "backend_exists=true" >> $GITHUB_OUTPUT
@@ -132,16 +171,18 @@ jobs:
 
       - name: Setup prerequisites
         if: steps.check-backend.outputs.backend_exists == 'false'
+        env:
+          AWS_REGION: ${{ steps.backend-config.outputs.region }}
         run: |
           chmod +x scripts/setup-prerequisites.sh
-          ./scripts/setup-prerequisites.sh ${{ matrix.environment }}
+          ./scripts/setup-prerequisites.sh ${{ matrix.environment }} ${{ steps.backend-config.outputs.region }}
 
       - name: Terraform Init
         run: |
           terraform init \
             -backend-config="bucket=${BACKEND_BUCKET}" \
             -backend-config="key=${BACKEND_KEY}" \
-            -backend-config="region=${AWS_REGION}" \
+            -backend-config="region=${{ steps.backend-config.outputs.region }}" \
             -backend-config="dynamodb_table=${BACKEND_DYNAMODB}" \
             -backend-config="encrypt=true"
 
