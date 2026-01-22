@@ -200,7 +200,13 @@ jobs:
             });
 
       - name: Terraform Apply
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply'
+        if: |
+          github.event_name == 'workflow_dispatch' &&
+          github.event.inputs.action == 'apply' &&
+          (
+            matrix.environment == 'dev' ||
+            ((matrix.environment == 'staging' || matrix.environment == 'prod') && github.ref == 'refs/heads/main')
+          )
         run: |
           terraform apply -auto-approve tfplan-${{ matrix.environment }}
 
@@ -212,7 +218,13 @@ jobs:
             -auto-approve
 
       - name: Capture outputs
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply'
+        if: |
+          github.event_name == 'workflow_dispatch' &&
+          github.event.inputs.action == 'apply' &&
+          (
+            matrix.environment == 'dev' ||
+            ((matrix.environment == 'staging' || matrix.environment == 'prod') && github.ref == 'refs/heads/main')
+          )
         id: outputs
         run: |
           echo "eks_endpoint=$(terraform output -raw eks_cluster_endpoint 2>/dev/null || echo 'N/A')" >> $GITHUB_OUTPUT
@@ -222,7 +234,13 @@ jobs:
           terraform output -json > outputs-${{ matrix.environment }}.json
 
       - name: Upload outputs
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply'
+        if: |
+          github.event_name == 'workflow_dispatch' &&
+          github.event.inputs.action == 'apply' &&
+          (
+            matrix.environment == 'dev' ||
+            ((matrix.environment == 'staging' || matrix.environment == 'prod') && github.ref == 'refs/heads/main')
+          )
         uses: actions/upload-artifact@v4
         with:
           name: outputs-${{ matrix.environment }}
