@@ -35,6 +35,7 @@ backend-*.hcl
 !.env.example
 *.env.local
 .envrc
+.github-config
 
 # AWS Credentials
 .aws/
