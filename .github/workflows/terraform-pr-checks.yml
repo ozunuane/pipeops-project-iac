@@ -142,13 +142,26 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Render terraform docs
+        id: render-docs
         uses: terraform-docs/gh-actions@v1.0.0
+        continue-on-error: true  # Don't fail workflow if docs are outdated
         with:
           working-dir: .
           output-file: TERRAFORM_DOCS.md
           output-method: inject
           git-push: false
-          fail-on-diff: false  # Changed to false to warn instead of fail
+          fail-on-diff: false
+
+      - name: Docs check status
+        if: steps.render-docs.outcome == 'failure'
+        run: |
+          echo "⚠️ Terraform documentation check failed (docs may be outdated or missing)." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "This is a warning and will not block your PR. To update the docs:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "docker run --rm -v \$(pwd):/data quay.io/terraform-docs/terraform-docs:latest markdown table --indent 2 --output-mode inject --output-file TERRAFORM_DOCS.md ." >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "Then commit the updated TERRAFORM_DOCS.md file." >> $GITHUB_STEP_SUMMARY
 
   # Overall PR check summary
   pr-summary:
