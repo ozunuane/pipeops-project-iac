@@ -1,0 +1,246 @@
+name: Terraform DR Infrastructure
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'dr-infrastructure/**'
+      - '.github/workflows/terraform-dr.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'dr-infrastructure/**'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Terraform action'
+        required: true
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+
+env:
+  TF_VERSION: '1.5.0'
+  DR_REGION: us-east-1
+  PRIMARY_REGION: us-west-2
+  PROJECT_NAME: pipeops  # Change this for other projects
+
+# Required permissions for OIDC authentication
+permissions:
+  id-token: write   # Required for requesting the JWT
+  contents: read    # Required for actions/checkout
+
+jobs:
+  terraform-dr:
+    runs-on: ubuntu-latest
+    
+    # DR only runs for production
+    environment:
+      name: prod-dr
+      url: ${{ steps.outputs.outputs.dr_eks_endpoint }}
+    
+    defaults:
+      run:
+        working-directory: ./dr-infrastructure
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (Primary Region)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_PROD }}
+          role-session-name: github-actions-dr-${{ github.run_id }}
+          aws-region: ${{ env.PRIMARY_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Set environment variables
+        run: |
+          echo "ENVIRONMENT=prod" >> $GITHUB_ENV
+          echo "TF_VAR_environment=prod" >> $GITHUB_ENV
+          echo "PROJECT_NAME=${{ env.PROJECT_NAME }}" >> $GITHUB_ENV
+          echo "BACKEND_BUCKET=${{ env.PROJECT_NAME }}-prod-dr-terraform-state" >> $GITHUB_ENV
+          echo "BACKEND_KEY=dr/terraform.tfstate" >> $GITHUB_ENV
+          echo "BACKEND_DYNAMODB=${{ env.PROJECT_NAME }}-prod-dr-terraform-locks" >> $GITHUB_ENV
+          echo "BACKEND_REGION=${{ env.DR_REGION }}" >> $GITHUB_ENV
+
+      - name: Check if backend exists
+        id: check-backend
+        run: |
+          if aws s3 ls s3://${BACKEND_BUCKET} --region ${DR_REGION} 2>&1 | grep -q 'NoSuchBucket'; then
+            echo "backend_exists=false" >> $GITHUB_OUTPUT
+          else
+            echo "backend_exists=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup DR prerequisites
+        if: steps.check-backend.outputs.backend_exists == 'false'
+        run: |
+          chmod +x scripts/setup-dr-prerequisites.sh
+          ./scripts/setup-dr-prerequisites.sh
+
+      - name: Get primary RDS ARN
+        id: primary-rds
+        run: |
+          # Query primary infrastructure state to get RDS ARN
+          cd ..
+          terraform init \
+            -backend-config="bucket=${{ env.PROJECT_NAME }}-prod-terraform-state" \
+            -backend-config="key=prod/terraform.tfstate" \
+            -backend-config="region=${PRIMARY_REGION}" \
+            -backend-config="dynamodb_table=${{ env.PROJECT_NAME }}-prod-terraform-locks" \
+            -backend-config="encrypt=true"
+          
+          RDS_ARN=$(terraform output -raw rds_arn 2>/dev/null || echo "")
+          
+          if [ -z "$RDS_ARN" ]; then
+            echo "⚠️ Warning: Primary RDS ARN not found. DR replica creation may fail."
+            echo "rds_arn=arn:aws:rds:${PRIMARY_REGION}:ACCOUNT_ID:db:${{ env.PROJECT_NAME }}-prod-postgres" >> $GITHUB_OUTPUT
+          else
+            echo "rds_arn=${RDS_ARN}" >> $GITHUB_OUTPUT
+          fi
+          
+          cd dr-infrastructure
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="bucket=${BACKEND_BUCKET}" \
+            -backend-config="key=${BACKEND_KEY}" \
+            -backend-config="region=${BACKEND_REGION}" \
+            -backend-config="dynamodb_table=${BACKEND_DYNAMODB}" \
+            -backend-config="encrypt=true"
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+        continue-on-error: true
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          # Update terraform.tfvars with actual RDS ARN
+          sed -i.bak "s|primary_rds_arn.*|primary_rds_arn = \"${{ steps.primary-rds.outputs.rds_arn }}\"|" \
+            environments/prod/terraform.tfvars
+          
+          terraform plan \
+            -var-file="environments/prod/terraform.tfvars" \
+            -out=tfplan-dr \
+            -no-color | tee plan-output.txt
+          
+          echo "plan_exitcode=$?" >> $GITHUB_OUTPUT
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-dr
+          path: |
+            dr-infrastructure/tfplan-dr
+            dr-infrastructure/plan-output.txt
+          retention-days: 5
+
+      - name: Comment PR with plan
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('dr-infrastructure/plan-output.txt', 'utf8');
+            const output = `#### Terraform Plan for \`DR Infrastructure (us-east-1)\` 🌐
+            
+            <details>
+            <summary>Show DR Plan</summary>
+            
+            \`\`\`terraform
+            ${plan.length > 65000 ? plan.substring(0, 65000) + '...\n[Plan output truncated]' : plan}
+            \`\`\`
+            
+            </details>
+            
+            **Components:**
+            - DR VPC (us-east-1)
+            - DR EKS Cluster (standby mode)
+            - DR RDS Read Replica (cross-region)
+            
+            *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });
+
+      - name: Terraform Apply
+        if: |
+          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+          (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
+        run: |
+          terraform apply -auto-approve tfplan-dr
+
+      - name: Terraform Destroy
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
+        run: |
+          terraform destroy \
+            -var-file="environments/prod/terraform.tfvars" \
+            -auto-approve
+
+      - name: Capture outputs
+        if: |
+          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+          (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
+        id: outputs
+        run: |
+          echo "dr_eks_endpoint=$(terraform output -raw dr_eks_cluster_endpoint 2>/dev/null || echo 'N/A')" >> $GITHUB_OUTPUT
+          echo "dr_rds_endpoint=$(terraform output -raw dr_rds_replica_endpoint 2>/dev/null || echo 'N/A')" >> $GITHUB_OUTPUT
+          
+          # Save all outputs to file
+          terraform output -json > outputs-dr.json
+
+      - name: Upload outputs
+        if: |
+          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+          (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
+        uses: actions/upload-artifact@v4
+        with:
+          name: outputs-dr
+          path: dr-infrastructure/outputs-dr.json
+          retention-days: 30
+
+      - name: DR Deployment Summary
+        if: |
+          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+          (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
+        run: |
+          echo "## DR Infrastructure Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### ✅ Deployed Components" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Region | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| DR VPC | us-east-1 | ✅ Deployed |" >> $GITHUB_STEP_SUMMARY
+          echo "| DR EKS Cluster | us-east-1 | ✅ Deployed |" >> $GITHUB_STEP_SUMMARY
+          echo "| DR RDS Replica | us-east-1 | ✅ Deployed |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔗 Endpoints" >> $GITHUB_STEP_SUMMARY
+          echo "- **EKS Endpoint:** \`${{ steps.outputs.outputs.dr_eks_endpoint }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **RDS Endpoint:** \`${{ steps.outputs.outputs.dr_rds_endpoint }}\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Notify on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.setFailed('DR infrastructure deployment failed');

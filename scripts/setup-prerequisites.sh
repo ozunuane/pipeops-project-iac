@@ -3,9 +3,34 @@ set -e
 
 # Prerequisites Setup Script
 # This script helps set up the required AWS resources for the Terraform backend
+# and configures GitHub Actions OIDC authentication
+#
+# Usage:
+#   ./scripts/setup-prerequisites.sh [ENVIRONMENT] [REGION]
+#
+# Examples:
+#   ./scripts/setup-prerequisites.sh dev us-east-1
+#   ./scripts/setup-prerequisites.sh prod us-west-2
+#   PROJECT_NAME=myproject ./scripts/setup-prerequisites.sh dev
+#   SKIP_OIDC=true ./scripts/setup-prerequisites.sh dev
+#
+# Environment Variables:
+#   PROJECT_NAME - Project name (default: pipeops)
+#   SKIP_OIDC    - Skip OIDC setup (default: false)
+#
+# What this script creates:
+#   ✓ S3 bucket for Terraform state
+#   ✓ DynamoDB table for state locking
+#   ✓ KMS key for encryption
+#   ✓ GitHub OIDC provider (once per AWS account)
+#   ✓ IAM role for GitHub Actions (per environment)
+#   ✓ Backend configuration file
 
+# Configuration
+PROJECT_NAME=${PROJECT_NAME:-pipeops}  # Can be overridden via environment variable
 ENVIRONMENT=${1:-dev}
 REGION=${2:-us-east-1}
+SKIP_OIDC=${SKIP_OIDC:-false}  # Set to 'true' to skip OIDC setup
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
 # Colors for output
@@ -32,7 +57,7 @@ log_error() {
 }
 
 create_s3_backend_bucket() {
-    BUCKET_NAME="pipeops-terraform-state-${ENVIRONMENT}-${ACCOUNT_ID}"
+    BUCKET_NAME="${PROJECT_NAME}-${ENVIRONMENT}-terraform-state"
 
     log_info "Creating S3 bucket for Terraform state: $BUCKET_NAME"
 
@@ -87,7 +112,7 @@ create_s3_backend_bucket() {
 }
 
 create_dynamodb_lock_table() {
-    TABLE_NAME="terraform-state-lock-${ENVIRONMENT}"
+    TABLE_NAME="${PROJECT_NAME}-${ENVIRONMENT}-terraform-locks"
 
     log_info "Creating DynamoDB table for state locking: $TABLE_NAME"
 
@@ -114,13 +139,13 @@ create_dynamodb_lock_table() {
 create_kms_key() {
     log_info "Creating KMS key for encryption..."
 
-    KEY_ALIAS="alias/pipeops-${ENVIRONMENT}-terraform"
+    KEY_ALIAS="alias/${PROJECT_NAME}-${ENVIRONMENT}-terraform"
 
     # Check if key alias exists
     if ! aws kms describe-key --key-id "$KEY_ALIAS" --region "$REGION" >/dev/null 2>&1; then
         KEY_ID=$(aws kms create-key \
             --region "$REGION" \
-            --description "KMS key for pipeops $ENVIRONMENT environment" \
+            --description "KMS key for ${PROJECT_NAME} ${ENVIRONMENT} environment" \
             --query 'KeyMetadata.KeyId' \
             --output text)
 
@@ -138,56 +163,129 @@ create_kms_key() {
     fi
 }
 
-create_iam_roles() {
-    log_info "Creating basic IAM roles for the deployment..."
+create_github_oidc_provider() {
+    log_info "Setting up GitHub OIDC provider (if not exists)..."
+    
+    OIDC_PROVIDER_URL="token.actions.githubusercontent.com"
+    OIDC_PROVIDER_ARN="arn:aws:iam::${ACCOUNT_ID}:oidc-provider/${OIDC_PROVIDER_URL}"
+    
+    # Check if OIDC provider already exists
+    if aws iam get-open-id-connect-provider --open-id-connect-provider-arn "$OIDC_PROVIDER_ARN" >/dev/null 2>&1; then
+        log_info "GitHub OIDC provider already exists"
+    else
+        log_info "Creating GitHub OIDC provider..."
+        aws iam create-open-id-connect-provider \
+            --url "https://${OIDC_PROVIDER_URL}" \
+            --client-id-list sts.amazonaws.com \
+            --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1 \
+            --tags Key=ManagedBy,Value=setup-prerequisites Key=Project,Value=${PROJECT_NAME}
+        
+        log_success "GitHub OIDC provider created"
+    fi
+    
+    echo "OIDC_PROVIDER_ARN=${OIDC_PROVIDER_ARN}" >> ".env.$ENVIRONMENT"
+}
 
-    # Create a role for the deployment user (optional - for CI/CD)
-    ROLE_NAME="pipeops-${ENVIRONMENT}-deploy-role"
-
-    TRUST_POLICY='{
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Effect": "Allow",
-                "Principal": {
-                    "AWS": "arn:aws:iam::'$ACCOUNT_ID':root"
-                },
-                "Action": "sts:AssumeRole",
-                "Condition": {
-                    "StringEquals": {
-                        "sts:ExternalId": "pipeops-'$ENVIRONMENT'-deploy"
-                    }
-                }
-            }
-        ]
-    }'
-
+create_github_actions_oidc_role() {
+    log_info "Creating GitHub Actions OIDC role for ${ENVIRONMENT}..."
+    
+    ROLE_NAME="${PROJECT_NAME}-${ENVIRONMENT}-github-actions"
+    
+    # Prompt for GitHub org and repo (with defaults for non-interactive)
+    if [ -t 0 ]; then
+        read -p "Enter GitHub organization/username (default: your-org): " GITHUB_ORG
+        read -p "Enter GitHub repository name (default: ${PROJECT_NAME}-project-iac): " GITHUB_REPO
+    fi
+    
+    GITHUB_ORG=${GITHUB_ORG:-your-org}
+    GITHUB_REPO=${GITHUB_REPO:-${PROJECT_NAME}-project-iac}
+    
+    # Determine which branch can assume this role based on environment
+    if [[ "$ENVIRONMENT" == "dev" ]]; then
+        ALLOWED_BRANCH="develop"
+    else
+        ALLOWED_BRANCH="main"
+    fi
+    
+    # Create trust policy for GitHub OIDC
+    TRUST_POLICY=$(cat <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+          "token.actions.githubusercontent.com:sub": "repo:${GITHUB_ORG}/${GITHUB_REPO}:ref:refs/heads/${ALLOWED_BRANCH}"
+        }
+      }
+    }
+  ]
+}
+EOF
+)
+    
     # Create role if it doesn't exist
     if ! aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
         aws iam create-role \
             --role-name "$ROLE_NAME" \
-            --assume-role-policy-document "$TRUST_POLICY"
-
+            --assume-role-policy-document "$TRUST_POLICY" \
+            --description "GitHub Actions OIDC role for ${PROJECT_NAME} ${ENVIRONMENT} environment" \
+            --max-session-duration 3600 \
+            --tags Key=ManagedBy,Value=setup-prerequisites Key=Project,Value=${PROJECT_NAME} Key=Environment,Value=${ENVIRONMENT}
+        
         # Attach necessary policies (be more restrictive in production)
+        log_info "Attaching IAM policies to role..."
         aws iam attach-role-policy \
             --role-name "$ROLE_NAME" \
             --policy-arn arn:aws:iam::aws:policy/PowerUserAccess
-
+        
         aws iam attach-role-policy \
             --role-name "$ROLE_NAME" \
             --policy-arn arn:aws:iam::aws:policy/IAMFullAccess
-
-        log_success "IAM role created: $ROLE_NAME"
+        
+        log_success "GitHub Actions OIDC role created: $ROLE_NAME"
+        log_info "Allowed repository: ${GITHUB_ORG}/${GITHUB_REPO}"
+        log_info "Allowed branch: ${ALLOWED_BRANCH}"
     else
-        log_info "IAM role already exists: $ROLE_NAME"
+        log_info "GitHub Actions OIDC role already exists: $ROLE_NAME"
     fi
+    
+    ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${ROLE_NAME}"
+    echo "GITHUB_ACTIONS_ROLE_ARN=${ROLE_ARN}" >> ".env.$ENVIRONMENT"
+    
+    log_warning "⚠️  Add this to your GitHub repository secrets:"
+    log_warning "   Secret name: AWS_ROLE_ARN_$(echo $ENVIRONMENT | tr '[:lower:]' '[:upper:]')"
+    log_warning "   Secret value: ${ROLE_ARN}"
+}
 
-    echo "DEPLOY_ROLE_ARN=arn:aws:iam::${ACCOUNT_ID}:role/${ROLE_NAME}" >> ".env.$ENVIRONMENT"
+create_iam_roles() {
+    if [[ "$SKIP_OIDC" == "true" ]]; then
+        log_warning "Skipping OIDC setup (SKIP_OIDC=true)"
+        log_info "You will need to configure AWS authentication manually"
+        echo "OIDC_SETUP=skipped" >> ".env.$ENVIRONMENT"
+        return
+    fi
+    
+    log_info "Setting up IAM roles for deployment..."
+    
+    # Create GitHub OIDC provider (once per account)
+    create_github_oidc_provider
+    
+    # Create GitHub Actions OIDC role (per environment)
+    create_github_actions_oidc_role
 }
 
 generate_backend_config() {
-    BUCKET_NAME="pipeops-terraform-state-${ENVIRONMENT}-${ACCOUNT_ID}"
-    TABLE_NAME="terraform-state-lock-${ENVIRONMENT}"
+    BUCKET_NAME="${PROJECT_NAME}-${ENVIRONMENT}-terraform-state"
+    TABLE_NAME="${PROJECT_NAME}-${ENVIRONMENT}-terraform-locks"
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
     BACKEND_CONF_DIR="$ROOT_DIR/environments/$ENVIRONMENT"
@@ -199,7 +297,7 @@ generate_backend_config() {
 
     # Generate backend.conf in the environment directory
     cat > "$BACKEND_CONF_DIR/backend.conf" << EOF
-key      = "pipeops-project-iac-${ENVIRONMENT}-terraform.tfstate"
+key      = "${ENVIRONMENT}/terraform.tfstate"
 region   = "${REGION}"
 encrypt  = true
 dynamodb_table = "${TABLE_NAME}"
@@ -211,11 +309,12 @@ EOF
     # Also generate a human-readable reference file at root
     cat > "$ROOT_DIR/backend-${ENVIRONMENT}.hcl" << EOF
 # Backend configuration for $ENVIRONMENT environment
+# Project: ${PROJECT_NAME}
 # This is a reference file. The actual config is in: environments/$ENVIRONMENT/backend.conf
 # Usage: terraform init -backend-config=environments/$ENVIRONMENT/backend.conf
 
 bucket         = "${BUCKET_NAME}"
-key            = "pipeops-project-iac-${ENVIRONMENT}-terraform.tfstate"
+key            = "${ENVIRONMENT}/terraform.tfstate"
 region         = "${REGION}"
 encrypt        = true
 dynamodb_table = "${TABLE_NAME}"
@@ -240,8 +339,8 @@ EOF
 validate_setup() {
     log_info "Validating setup..."
 
-    BUCKET_NAME="pipeops-terraform-state-${ENVIRONMENT}-${ACCOUNT_ID}"
-    TABLE_NAME="terraform-state-lock-${ENVIRONMENT}"
+    BUCKET_NAME="${PROJECT_NAME}-${ENVIRONMENT}-terraform-state"
+    TABLE_NAME="${PROJECT_NAME}-${ENVIRONMENT}-terraform-locks"
 
     # Test S3 bucket
     if aws s3 ls "s3://$BUCKET_NAME" >/dev/null 2>&1; then
@@ -263,33 +362,93 @@ validate_setup() {
 }
 
 print_next_steps() {
-    BUCKET_NAME="pipeops-terraform-state-${ENVIRONMENT}-${ACCOUNT_ID}"
-    TABLE_NAME="terraform-state-lock-${ENVIRONMENT}"
+    BUCKET_NAME="${PROJECT_NAME}-${ENVIRONMENT}-terraform-state"
+    TABLE_NAME="${PROJECT_NAME}-${ENVIRONMENT}-terraform-locks"
 
     log_success "Prerequisites setup completed!"
     echo ""
     log_info "=== RESOURCES CREATED ==="
+    log_info "✓ Project:         $PROJECT_NAME"
+    log_info "✓ Environment:     $ENVIRONMENT"
     log_info "✓ S3 Bucket:       $BUCKET_NAME"
     log_info "✓ DynamoDB Table:  $TABLE_NAME"
-    log_info "✓ KMS Key:         alias/pipeops-${ENVIRONMENT}-terraform"
+    log_info "✓ KMS Key:         alias/${PROJECT_NAME}-${ENVIRONMENT}-terraform"
+    
+    if [[ "$SKIP_OIDC" != "true" ]]; then
+        ROLE_NAME="${PROJECT_NAME}-${ENVIRONMENT}-github-actions"
+        ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${ROLE_NAME}"
+        
+        log_info "✓ OIDC Provider:   token.actions.githubusercontent.com"
+        log_info "✓ IAM Role:        $ROLE_NAME"
+    fi
+    
     log_info "✓ Backend Config:  environments/$ENVIRONMENT/backend.conf"
     echo ""
+    
+    if [[ "$SKIP_OIDC" != "true" ]]; then
+        ROLE_NAME="${PROJECT_NAME}-${ENVIRONMENT}-github-actions"
+        ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${ROLE_NAME}"
+        
+        log_warning "=== GITHUB ACTIONS SETUP REQUIRED ==="
+        log_warning "Add this secret to your GitHub repository:"
+        echo ""
+        log_warning "  Secret Name:  AWS_ROLE_ARN_$(echo $ENVIRONMENT | tr '[:lower:]' '[:upper:]')"
+        log_warning "  Secret Value: ${ROLE_ARN}"
+        echo ""
+        log_info "To add via GitHub CLI:"
+        log_info "  gh secret set AWS_ROLE_ARN_$(echo $ENVIRONMENT | tr '[:lower:]' '[:upper:]') \\"
+        log_info "    --body \"${ROLE_ARN}\" \\"
+        log_info "    --repo YOUR_ORG/YOUR_REPO"
+        echo ""
+        log_info "Or via GitHub Web UI:"
+        log_info "  1. Go to: Settings → Secrets and variables → Actions"
+        log_info "  2. Click: New repository secret"
+        log_info "  3. Name: AWS_ROLE_ARN_$(echo $ENVIRONMENT | tr '[:lower:]' '[:upper:]')"
+        log_info "  4. Value: ${ROLE_ARN}"
+        echo ""
+    fi
+    
     log_info "=== NEXT STEPS ==="
-    log_info "1. Review the backend configuration:"
+    
+    if [[ "$SKIP_OIDC" != "true" ]]; then
+        log_info "1. Add the GitHub secret (see above)"
+        echo ""
+        log_info "2. Review the backend configuration:"
+    else
+        log_info "1. Review the backend configuration:"
+    fi
+    
     log_info "   cat environments/$ENVIRONMENT/backend.conf"
     echo ""
-    log_info "2. Plan your deployment (this will automatically initialize the backend):"
+    
+    if [[ "$SKIP_OIDC" != "true" ]]; then
+        log_info "3. (Optional) Test local deployment:"
+    else
+        log_info "2. (Optional) Test local deployment:"
+    fi
+    
     log_info "   ./scripts/deploy.sh $ENVIRONMENT plan"
-    echo ""
-    log_info "3. Apply your deployment:"
     log_info "   ./scripts/deploy.sh $ENVIRONMENT apply"
     echo ""
-    log_info "The deploy.sh script will automatically use the backend.conf file!"
+    
+    if [[ "$SKIP_OIDC" != "true" ]]; then
+        log_info "4. Push to GitHub and let CI/CD handle deployments!"
+        echo ""
+        log_info "The GitHub Actions workflows will automatically use OIDC authentication!"
+    else
+        log_warning "⚠️  OIDC was skipped. Configure AWS authentication for GitHub Actions:"
+        log_info "   - See: .github/workflows/AWS_OIDC_SETUP_GUIDE.md"
+        log_info "   - Or use AWS access keys (not recommended for production)"
+    fi
 }
 
 main() {
-    log_info "Setting up prerequisites for $ENVIRONMENT environment in region $REGION"
-    log_info "Account ID: $ACCOUNT_ID"
+    log_info "=== Prerequisites Setup ==="
+    log_info "Project:       $PROJECT_NAME"
+    log_info "Environment:   $ENVIRONMENT"
+    log_info "Region:        $REGION"
+    log_info "Account ID:    $ACCOUNT_ID"
+    echo ""
 
     setup_environment_file
     create_s3_backend_bucket
@@ -302,4 +461,5 @@ main() {
 }
 
 # Run main function
+main
 main

@@ -329,3 +329,10 @@ NOTES.md
 # Local overrides
 *.local
 local.*
+
+# DR Infrastructure (has its own .gitignore)
+# But ensure backend configs are not committed
+dr-infrastructure/environments/*/backend.conf
+dr-infrastructure/.terraform/
+dr-infrastructure/.terraform.lock.hcl
+dr-infrastructure/tfplan-dr-*

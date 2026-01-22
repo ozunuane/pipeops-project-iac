@@ -481,6 +481,56 @@ resource "aws_kms_alias" "rds_dr" {
   target_key_id = aws_kms_key.rds_dr[0].key_id
 }
 
+# Security group for DR RDS replica
+resource "aws_security_group" "rds_dr" {
+  count = var.enable_cross_region_dr && var.dr_vpc_id != "" ? 1 : 0
+
+  provider = aws.disaster_recovery
+
+  name        = "${var.project_name}-${var.environment}-rds-dr-sg"
+  description = "Security group for DR RDS replica"
+  vpc_id      = var.dr_vpc_id
+
+  # Ingress from DR EKS nodes
+  dynamic "ingress" {
+    for_each = var.dr_allowed_security_groups
+    content {
+      description     = "PostgreSQL from EKS nodes"
+      from_port       = 5432
+      to_port         = 5432
+      protocol        = "tcp"
+      security_groups = [ingress.value]
+    }
+  }
+
+  # Ingress from DR CIDR blocks
+  dynamic "ingress" {
+    for_each = var.dr_allowed_cidr_blocks
+    content {
+      description = "PostgreSQL from VPC"
+      from_port   = 5432
+      to_port     = 5432
+      protocol    = "tcp"
+      cidr_blocks = [ingress.value]
+    }
+  }
+
+  # Egress (allow all outbound)
+  egress {
+    description = "Allow all outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(var.tags, {
+    Name   = "${var.project_name}-${var.environment}-rds-dr-sg"
+    Region = var.dr_region
+    Role   = "disaster-recovery"
+  })
+}
+
 # Cross-region read replica for disaster recovery
 resource "aws_db_instance" "cross_region_replica" {
   count = var.enable_cross_region_dr ? 1 : 0
@@ -498,8 +548,10 @@ resource "aws_db_instance" "cross_region_replica" {
   storage_encrypted = true
   kms_key_id        = var.dr_kms_key_id != "" ? var.dr_kms_key_id : aws_kms_key.rds_dr[0].arn
 
-  # Network
-  publicly_accessible = false
+  # Network - Use DR VPC if provided
+  db_subnet_group_name   = var.dr_db_subnet_group_name != "" ? var.dr_db_subnet_group_name : null
+  vpc_security_group_ids = var.dr_vpc_id != "" ? [aws_security_group.rds_dr[0].id] : null
+  publicly_accessible    = false
 
   # Backup configuration (can be promoted to standalone)
   backup_retention_period = var.backup_retention_period
@@ -536,14 +588,17 @@ resource "aws_db_instance" "cross_region_replica" {
 }
 
 # Cross-region automated backup replication
+# Note: This is independent of DR replica (which is in DR workspace)
 resource "aws_db_instance_automated_backups_replication" "cross_region" {
   count = var.enable_cross_region_backups ? 1 : 0
 
   provider = aws.disaster_recovery
 
   source_db_instance_arn = aws_db_instance.main.arn
-  kms_key_id             = var.dr_kms_key_id != "" ? var.dr_kms_key_id : aws_kms_key.rds_dr[0].arn
   retention_period       = var.backup_retention_period
+  
+  # Use provided KMS key or default AWS-managed key
+  kms_key_id = var.dr_kms_key_id != "" ? var.dr_kms_key_id : null
 }
 
 # CloudWatch alarms for DR replica (if enabled)

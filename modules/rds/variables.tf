@@ -192,3 +192,28 @@ variable "dr_kms_key_id" {
   type        = string
   default     = ""
 }
+
+# DR Network Configuration
+variable "dr_vpc_id" {
+  description = "VPC ID in DR region for RDS replica"
+  type        = string
+  default     = ""
+}
+
+variable "dr_db_subnet_group_name" {
+  description = "DB subnet group name in DR region"
+  type        = string
+  default     = ""
+}
+
+variable "dr_allowed_security_groups" {
+  description = "List of security group IDs allowed to access DR RDS replica"
+  type        = list(string)
+  default     = []
+}
+
+variable "dr_allowed_cidr_blocks" {
+  description = "List of CIDR blocks allowed to access DR RDS replica"
+  type        = list(string)
+  default     = []
+}

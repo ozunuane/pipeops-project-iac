@@ -1,0 +1,14 @@
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfplan.*
+.terraform/
+.terraform.lock.hcl
+tfplan-dr-*
+
+# Backend configuration (generated)
+environments/*/backend.conf
+
+# Logs
+*.log

@@ -84,7 +84,8 @@ module "eks" {
   tags                                 = var.tags
 }
 
-# RDS Module with Multi-AZ, Read Replica, and Multi-Region DR support
+# RDS Module with Multi-AZ and Read Replica support
+# Note: Cross-region DR replica is now managed by the DR workspace
 module "rds" {
   source = "./modules/rds"
 
@@ -122,12 +123,12 @@ module "rds" {
   sns_topic_arn     = var.db_monitoring_sns_topic_arn
   apply_immediately = var.db_apply_immediately
 
-  # Multi-Region Disaster Recovery Configuration
-  enable_cross_region_dr      = var.db_enable_cross_region_dr
+  # Cross-region DR replica is now managed by DR workspace
+  # But cross-region backups are still managed here (no VPC dependency)
+  enable_cross_region_dr      = false                          # DR replica managed by DR workspace
+  enable_cross_region_backups = var.db_enable_cross_region_backups  # Backups can stay here
   dr_region                   = var.dr_region
-  dr_instance_class           = var.db_dr_instance_class
-  dr_multi_az                 = var.db_dr_multi_az
-  enable_cross_region_backups = var.db_enable_cross_region_backups
+  dr_kms_key_id               = var.db_dr_kms_key_id          # Optional: KMS key for backup encryption
 
   tags = var.tags
 }

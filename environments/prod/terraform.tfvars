@@ -30,11 +30,24 @@ db_monitoring_sns_topic_arn    = ""                           # TODO: Add SNS to
 db_apply_immediately           = false                        # Apply changes during maintenance window
 
 # Multi-Region Disaster Recovery (Production - RECOMMENDED)
-dr_region                      = "us-east-1"     # DR region (different from us-west-2)
-db_enable_cross_region_dr      = true            # ✅ Enable DR replica in us-east-1
-db_dr_instance_class           = "db.r6g.xlarge" # Same size as primary for production
-db_dr_multi_az                 = true            # ✅ Multi-AZ in DR region
-db_enable_cross_region_backups = true            # ✅ Also replicate backups
+dr_region = "us-east-1" # DR region (different from us-west-2)
+
+# Note: DR RDS replica is now managed by DR workspace (dr-infrastructure/)
+# Primary workspace only manages cross-region backup replication
+db_enable_cross_region_backups = true # ✅ Replicate backups to DR region
+db_dr_kms_key_id               = ""   # Optional: KMS key for backup encryption
+
+# DR EKS Cluster Configuration (Production Only)
+dr_vpc_cidr                             = "10.1.0.0/16"
+dr_availability_zones                   = ["us-east-1a", "us-east-1b", "us-east-1c"]
+dr_public_subnet_cidrs                  = ["10.1.101.0/24", "10.1.102.0/24", "10.1.103.0/24"]
+dr_private_subnet_cidrs                 = ["10.1.1.0/24", "10.1.2.0/24", "10.1.3.0/24"]
+dr_database_subnet_cidrs                = ["10.1.201.0/24", "10.1.202.0/24", "10.1.203.0/24"]
+dr_cluster_endpoint_public_access_cidrs = ["0.0.0.0/0"] # Restrict in production
+dr_desired_capacity                     = 2              # Standby mode - minimal nodes
+dr_min_capacity                         = 2
+dr_max_capacity                         = 6              # Can scale up during DR activation
+dr_node_instance_types                  = ["t3.medium", "t3.large"] # Cost-optimized for standby
 
 # Feature Flags
 enable_argocd     = true

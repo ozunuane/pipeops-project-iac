@@ -38,28 +38,29 @@ This setup includes:
 
 ## 🎯 Recent Updates
 
-### RDS High Availability & Multi-Region Disaster Recovery (Latest)
-The RDS module now supports **enterprise-grade HA/DR** with three protection tiers:
+### Multi-Region Disaster Recovery (Latest)
+The infrastructure now supports **complete multi-region DR** for production:
 
-**Tier 1: Multi-AZ (Single Region)**
+**🗄️ Database DR (RDS)**
 - ✅ Multi-AZ deployment with automatic failover (1-2 min RTO)
-- ✅ Read replicas for horizontal scaling
-- ✅ CloudWatch alarms for proactive monitoring
-- 💰 Cost: $1,196/month
+- ✅ Cross-region read replica in DR region
+- ✅ Automated backup replication
+- ✅ 5-10 second replication lag
+- 📚 [RDS Complete Guide](./RDS_COMPLETE_GUIDE.md)
 
-**Tier 2: + Cross-Region Backups**
-- ✅ Everything in Tier 1 +
-- ✅ Automated backup replication to DR region
-- 💰 Cost: $1,270/month (+6%)
+**☸️ Application DR (EKS) - NEW!**
+- ✅ Separate Terraform workspace for DR infrastructure
+- ✅ Standby EKS cluster in DR region (us-east-1)
+- ✅ Independent state management and deployment
+- ✅ Cost-optimized with minimal nodes (2x t3.medium)
+- ✅ Ready for rapid scale-up during DR activation
+- 📚 [DR Workspace Setup Guide](./DR_WORKSPACE_SETUP.md) ← **NEW**
+- 📚 [DR Infrastructure README](./dr-infrastructure/README.md)
 
-**Tier 3: + Multi-Region DR Replica**
-- ✅ Everything in Tier 2 +
-- ✅ Live DR replica in us-east-1 (Multi-AZ)
-- ✅ 5-10 second replication lag, 15-30 min RTO
-- 💰 Cost: $1,798/month (+50%)
-
-**📚 Complete Documentation:**
-- **[RDS Complete Guide](./RDS_COMPLETE_GUIDE.md)** ← **START HERE** - Everything you need in one place
+**💰 Total DR Cost (Production)**
+- RDS Multi-Region DR: ~$1,798/month
+- DR EKS Cluster (Standby): ~$243/month
+- **Total**: ~$2,041/month for complete DR capability
 
 ## 🚀 Quick Start
 
@@ -69,6 +70,22 @@ The RDS module now supports **enterprise-grade HA/DR** with three protection tie
 2. **Terraform** >= 1.5
 3. **kubectl** >= 1.28
 4. **Helm** >= 3.12
+5. **GitHub Account** (for CI/CD pipelines)
+
+### Deployment Options
+
+You can deploy this infrastructure in two ways:
+
+#### Option 1: GitHub Actions (Recommended)
+Automated CI/CD pipeline for all environments. See [GitHub Actions Guide](./GITHUB_ACTIONS_GUIDE.md) for complete setup.
+
+```bash
+# Push to develop branch → deploys to dev
+# Push to main branch → deploys to staging and prod
+# DR deploys automatically after prod (main branch)
+```
+
+#### Option 2: Local Deployment
 
 ### Step 1: Set up AWS Prerequisites
 
@@ -348,12 +365,30 @@ kubectl run -it --rm debug --image=postgres:15 --restart=Never -- psql -h <rds-e
 - Check AWS EKS documentation
 - ArgoCD documentation and community
 
-## 📚 Additional Resources
+## 📚 Documentation
 
+### Getting Started
+- 🏗️ **[Architecture Overview](./ARCHITECTURE_OVERVIEW.md) - Visual system architecture** ⭐
+- 🚀 [Quick Start Guide](./QUICK_START.md) - Fast deployment reference
+- ⚙️ [GitHub Actions Guide](./GITHUB_ACTIONS_GUIDE.md) - **NEW** CI/CD pipeline setup
+
+### Setup and Deployment
+- 📋 [Environment Deployment Guide](./ENVIRONMENT_DEPLOYMENT_GUIDE.md) - Detailed deployment instructions
+- 🔄 [Deployment Workflow](./DEPLOYMENT_WORKFLOW.md) - Complete workflow documentation
+- ✅ [CI/CD Complete](./CI_CD_COMPLETE.md) - CI/CD implementation status
+
+### Infrastructure Components
+- 🗄️ [RDS Complete Guide](./RDS_COMPLETE_GUIDE.md) - Database HA and DR setup
+- 🌐 [DR Workspace Setup](./DR_WORKSPACE_SETUP.md) - Disaster recovery configuration
+- 🔗 [RDS DR Network Integration](./RDS_DR_NETWORK_INTEGRATION.md) - Network connectivity
+- ☸️ [Kubernetes Manifests](./k8s-manifests/README.md) - Multi-environment K8s setup
+
+### External Resources
 - [AWS EKS Best Practices](https://aws.github.io/aws-eks-best-practices/)
 - [ArgoCD Documentation](https://argo-cd.readthedocs.io/)
 - [Terraform AWS Provider](https://registry.terraform.io/providers/hashicorp/aws/latest/docs)
 - [Kubernetes Documentation](https://kubernetes.io/docs/)
+- [GitHub Actions Documentation](https://docs.github.com/en/actions)
 
 ## 🤝 Contributing
 

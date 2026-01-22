@@ -1,0 +1,177 @@
+name: Terraform PR Checks
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - '**.tf'
+      - 'environments/**'
+      - 'modules/**'
+      - 'dr-infrastructure/**'
+
+env:
+  TF_VERSION: '1.5.0'
+
+jobs:
+  # Validate Terraform formatting and syntax
+  terraform-validate:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        workspace:
+          - path: '.'
+            name: 'main'
+          - path: 'dr-infrastructure'
+            name: 'dr'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Format Check
+        working-directory: ${{ matrix.workspace.path }}
+        run: |
+          echo "## Terraform Format Check - ${{ matrix.workspace.name }}" >> $GITHUB_STEP_SUMMARY
+          if terraform fmt -check -recursive -diff; then
+            echo "✅ All files are properly formatted" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Some files need formatting" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Run: \`terraform fmt -recursive\` to fix" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Terraform Init
+        working-directory: ${{ matrix.workspace.path }}
+        run: terraform init -backend=false
+
+      - name: Terraform Validate
+        working-directory: ${{ matrix.workspace.path }}
+        run: |
+          if terraform validate; then
+            echo "✅ Terraform configuration is valid" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Terraform validation failed" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+  # Security scanning with tfsec
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run tfsec
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          soft_fail: true
+          format: sarif
+          additional_args: --out tfsec-results.sarif
+
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: tfsec-results.sarif
+
+  # Check for sensitive data in code
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Cost estimation with Infracost
+  cost-estimate:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Infracost
+        uses: infracost/actions/setup@v3
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
+
+      - name: Generate cost estimate for main infrastructure
+        run: |
+          infracost breakdown --path=. \
+            --terraform-var-file=environments/prod/terraform.tfvars \
+            --format=json \
+            --out-file=/tmp/infracost-main.json || true
+
+      - name: Generate cost estimate for DR infrastructure
+        run: |
+          infracost breakdown --path=dr-infrastructure \
+            --terraform-var-file=dr-infrastructure/environments/prod/terraform.tfvars \
+            --format=json \
+            --out-file=/tmp/infracost-dr.json || true
+
+      - name: Post cost comment
+        run: |
+          infracost comment github --path=/tmp/infracost-*.json \
+            --repo=${{ github.repository }} \
+            --pull-request=${{ github.event.pull_request.number }} \
+            --github-token=${{ secrets.GITHUB_TOKEN }} \
+            --behavior=update || echo "Infracost comment skipped"
+
+  # Terraform documentation check
+  docs-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Render terraform docs
+        uses: terraform-docs/gh-actions@v1.0.0
+        with:
+          working-dir: .
+          output-file: TERRAFORM_DOCS.md
+          output-method: inject
+          git-push: false
+          fail-on-diff: true
+
+  # Overall PR check summary
+  pr-summary:
+    needs: [terraform-validate, security-scan, secrets-scan, docs-check]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Generate PR summary
+        run: |
+          echo "## Terraform PR Checks Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Terraform Validate | ${{ needs.terraform-validate.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Scan | ${{ needs.security-scan.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Secrets Scan | ${{ needs.secrets-scan.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Documentation | ${{ needs.docs-check.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check if all passed
+        if: |
+          needs.terraform-validate.result != 'success' ||
+          needs.security-scan.result != 'success' ||
+          needs.secrets-scan.result != 'success'
+        run: |
+          echo "Some checks failed. Please review and fix before merging."
+          exit 1

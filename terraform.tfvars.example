@@ -36,6 +36,19 @@ db_dr_instance_class           = "db.r6g.large"  # DR instance size
 db_dr_multi_az                 = true    # Multi-AZ in DR region (recommended)
 db_enable_cross_region_backups = false   # Enable backup replication to DR region
 
+# DR EKS Cluster Configuration (Production Only - automatically enabled for prod environment)
+# These settings are only used when environment = "prod"
+dr_vpc_cidr                             = "10.1.0.0/16"
+dr_availability_zones                   = ["us-east-1a", "us-east-1b", "us-east-1c"]
+dr_public_subnet_cidrs                  = ["10.1.101.0/24", "10.1.102.0/24", "10.1.103.0/24"]
+dr_private_subnet_cidrs                 = ["10.1.1.0/24", "10.1.2.0/24", "10.1.3.0/24"]
+dr_database_subnet_cidrs                = ["10.1.201.0/24", "10.1.202.0/24", "10.1.203.0/24"]
+dr_cluster_endpoint_public_access_cidrs = ["0.0.0.0/0"]  # Restrict to your IP ranges in production
+dr_desired_capacity                     = 2              # Minimal nodes for standby mode
+dr_min_capacity                         = 2
+dr_max_capacity                         = 6              # Can scale during DR activation
+dr_node_instance_types                  = ["t3.medium", "t3.large"]  # Cost-optimized
+
 # Feature Flags
 enable_argocd     = true
 enable_monitoring = true

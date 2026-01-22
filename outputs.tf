@@ -86,30 +86,20 @@ output "rds_cloudwatch_alarms" {
   value       = module.rds.cloudwatch_alarm_arns
 }
 
-# Multi-Region DR Outputs
-output "rds_dr_enabled" {
-  description = "Whether multi-region DR is enabled"
-  value       = module.rds.dr_replica_enabled
-}
-
-output "rds_dr_endpoint" {
-  description = "DR replica endpoint"
-  value       = module.rds.dr_replica_endpoint
-}
-
-output "rds_dr_region" {
-  description = "DR region"
-  value       = module.rds.dr_replica_region
-}
-
-output "rds_dr_multi_az" {
-  description = "Whether DR replica is Multi-AZ"
-  value       = module.rds.dr_replica_multi_az
+# RDS ARN for DR Workspace
+output "rds_arn" {
+  description = "ARN of the primary RDS instance (needed for DR workspace)"
+  value       = module.rds.db_instance_arn
 }
 
 output "rds_cross_region_backups_enabled" {
   description = "Whether cross-region backup replication is enabled"
   value       = module.rds.cross_region_backups_enabled
+}
+
+output "rds_dr_note" {
+  description = "Note about RDS DR replica management"
+  value       = "RDS DR replica is managed by the DR workspace (dr-infrastructure/). Use the primary RDS ARN to configure it."
 }
 
 # ArgoCD Outputs
@@ -189,5 +179,6 @@ output "cost_optimization_notes" {
     "storage"         = "Use gp3 volumes for better price-performance ratio"
     "nat_gateway"     = "Consider using NAT instances for lower cost in development"
     "load_balancers"  = "Use Application Load Balancers efficiently with multiple services"
+    "dr_cluster"      = var.environment == "prod" ? "DR cluster is in standby mode with minimal nodes for cost optimization" : "DR cluster disabled for non-production"
   }
 }
