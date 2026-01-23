@@ -194,9 +194,10 @@ resource "aws_iam_role_policy_attachment" "rds_monitoring" {
 }
 
 # Parameter group for PostgreSQL
+# Family must match the major version (e.g., postgres16 for version 16.x)
 resource "aws_db_parameter_group" "main" {
-  family = "postgres15"
-  name   = "${var.project_name}-${var.environment}-postgres-params"
+  family = "postgres${split(".", var.postgres_version)[0]}"
+  name   = "${var.project_name}-${var.environment}-postgres${split(".", var.postgres_version)[0]}-params"
 
   parameter {
     name  = "shared_preload_libraries"
@@ -224,16 +225,25 @@ resource "aws_db_parameter_group" "main" {
   }
 
   tags = var.tags
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
-# Option group (not typically used with PostgreSQL, but keeping for consistency)
+# Option group for PostgreSQL
+# Major version must match the engine version
 resource "aws_db_option_group" "main" {
-  name                     = "${var.project_name}-${var.environment}-postgres-options"
+  name                     = "${var.project_name}-${var.environment}-postgres${split(".", var.postgres_version)[0]}-options"
   option_group_description = "Option group for ${var.project_name} ${var.environment} PostgreSQL"
   engine_name              = "postgres"
-  major_engine_version     = "15"
+  major_engine_version     = split(".", var.postgres_version)[0]
 
   tags = var.tags
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # CloudWatch Log Groups for RDS logs
