@@ -15,6 +15,7 @@ database_subnet_cidrs = ["10.1.201.0/24", "10.1.202.0/24", "10.1.203.0/24"]
 
 # EKS Configuration
 kubernetes_version = "1.33"
+cluster_exists     = false # Set to true after EKS cluster is created
 
 # RDS Configuration - STAGING with Multi-AZ (no read replicas)
 db_instance_class              = "db.r6g.large" # Standard instance
