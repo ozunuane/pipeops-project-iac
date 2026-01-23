@@ -29,8 +29,8 @@ db_read_replica_count          = 2                            # 2 read replicas 
 db_read_replica_instance_class = "db.m5d.large"               # Read replicas can be smaller
 db_replica_availability_zones  = ["us-west-2b", "us-west-2c"] # Spread across AZs
 # db_iops                        = 3000                         # Provisioned IOPS for better performance
-db_monitoring_sns_topic_arn    = ""                           # TODO: Add SNS topic ARN after creation
-db_apply_immediately           = false                        # Apply changes during maintenance window
+db_monitoring_sns_topic_arn = ""    # TODO: Add SNS topic ARN after creation
+db_apply_immediately        = false # Apply changes during maintenance window
 
 # Multi-Region Disaster Recovery (Production - RECOMMENDED)
 dr_region = "us-east-1" # DR region (different from us-west-2)
