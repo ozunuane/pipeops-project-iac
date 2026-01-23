@@ -19,13 +19,14 @@ kubernetes_version = "1.33"
 cluster_exists     = false # Set to true after EKS cluster is created (enables Helm resources)
 
 # RDS Configuration - PRODUCTION with Multi-AZ + Read Replicas
-db_instance_class              = "db.r6g.xlarge"              # Larger instance for production
+db_instance_class              = "db.m5d.large"               # Larger instance for production
+db_postgres_version            = "16.6"                       # PostgreSQL 16.6 - available in all AWS regions
 db_allocated_storage           = 400                          # 400 GB initial storage (minimum for provisioned IOPS)
 db_backup_retention            = 30                           # 30 days backup retention
 db_multi_az                    = true                         # ✅ Multi-AZ ENABLED - Critical for HA
 db_create_read_replica         = true                         # ✅ Read replicas ENABLED
 db_read_replica_count          = 2                            # 2 read replicas for load distribution
-db_read_replica_instance_class = "db.r6g.large"               # Read replicas can be smaller
+db_read_replica_instance_class = "db.m5d.large"               # Read replicas can be smaller
 db_replica_availability_zones  = ["us-west-2b", "us-west-2c"] # Spread across AZs
 db_iops                        = 3000                         # Provisioned IOPS for better performance
 db_monitoring_sns_topic_arn    = ""                           # TODO: Add SNS topic ARN after creation

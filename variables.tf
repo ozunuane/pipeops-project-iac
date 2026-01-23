@@ -88,6 +88,12 @@ variable "db_allocated_storage" {
   default     = 100
 }
 
+variable "db_postgres_version" {
+  description = "PostgreSQL engine version for RDS"
+  type        = string
+  default     = "16.6"
+}
+
 variable "db_backup_retention" {
   description = "RDS backup retention period in days"
   type        = number

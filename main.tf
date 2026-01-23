@@ -104,9 +104,11 @@ module "rds" {
   database_password       = local.db_password
   db_instance_class       = var.db_instance_class
   allocated_storage       = var.db_allocated_storage
+  postgres_version        = var.db_postgres_version
   backup_retention_period = var.db_backup_retention
   deletion_protection     = var.environment == "prod" ? true : false
   skip_final_snapshot     = var.environment == "prod" ? false : true
+
 
   # High Availability Configuration
   multi_az                    = var.db_multi_az
