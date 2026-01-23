@@ -477,8 +477,9 @@ resource "aws_cloudwatch_metric_alarm" "database_write_latency" {
 # ==========================================
 
 # KMS key for DR region encryption
+# Created for both DR replica (enable_cross_region_dr) and cross-region backups (enable_cross_region_backups)
 resource "aws_kms_key" "rds_dr" {
-  count = var.enable_cross_region_dr && var.dr_kms_key_id == "" ? 1 : 0
+  count = (var.enable_cross_region_dr || var.enable_cross_region_backups) && var.dr_kms_key_id == "" ? 1 : 0
 
   provider = aws.disaster_recovery
 
@@ -494,7 +495,7 @@ resource "aws_kms_key" "rds_dr" {
 }
 
 resource "aws_kms_alias" "rds_dr" {
-  count = var.enable_cross_region_dr && var.dr_kms_key_id == "" ? 1 : 0
+  count = (var.enable_cross_region_dr || var.enable_cross_region_backups) && var.dr_kms_key_id == "" ? 1 : 0
 
   provider = aws.disaster_recovery
 
@@ -618,8 +619,11 @@ resource "aws_db_instance_automated_backups_replication" "cross_region" {
   source_db_instance_arn = aws_db_instance.main.arn
   retention_period       = var.backup_retention_period
 
-  # Use provided KMS key or default AWS-managed key
-  kms_key_id = var.dr_kms_key_id != "" ? var.dr_kms_key_id : null
+  # Use provided KMS key or the created DR KMS key
+  # If dr_kms_key_id is provided, use it; otherwise use the auto-created key
+  kms_key_id = var.dr_kms_key_id != "" ? var.dr_kms_key_id : (
+    length(aws_kms_key.rds_dr) > 0 ? aws_kms_key.rds_dr[0].arn : null
+  )
 }
 
 # CloudWatch alarms for DR replica (if enabled)
