@@ -19,7 +19,7 @@ kubernetes_version = "1.33"
 cluster_exists     = false # Set to true after EKS cluster is created (enables Helm resources)
 
 # RDS Configuration - PRODUCTION with Multi-AZ + Read Replicas
-db_instance_class              = "db.m5d.large"              # Larger instance for production
+db_instance_class              = "db.m5d.large"               # Larger instance for production
 db_allocated_storage           = 200                          # 400 GB initial storage (minimum for provisioned IOPS)
 db_backup_retention            = 30                           # 30 days backup retention
 db_multi_az                    = true                         # ✅ Multi-AZ ENABLED - Critical for HA
