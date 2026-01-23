@@ -14,7 +14,7 @@ public_subnet_cidrs   = ["10.1.101.0/24", "10.1.102.0/24", "10.1.103.0/24"]
 database_subnet_cidrs = ["10.1.201.0/24", "10.1.202.0/24", "10.1.203.0/24"]
 
 # EKS Configuration
-kubernetes_version = "1.28"
+kubernetes_version = "1.33"
 
 # RDS Configuration - STAGING with Multi-AZ (no read replicas)
 db_instance_class              = "db.r6g.large" # Standard instance
