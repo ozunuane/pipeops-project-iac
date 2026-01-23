@@ -20,7 +20,8 @@ cluster_exists     = false # Set to true after EKS cluster is created (enables H
 
 # RDS Configuration - PRODUCTION with Multi-AZ + Read Replicas
 db_instance_class              = "db.m5d.large"               # Larger instance for production
-db_allocated_storage           = 200                          # 400 GB initial storage (minimum for provisioned IOPS)
+db_postgres_version            = "16.6"                       # PostgreSQL 16.6 - available in all AWS regions
+db_allocated_storage           = 400                          # 400 GB initial storage (minimum for provisioned IOPS)
 db_backup_retention            = 30                           # 30 days backup retention
 db_multi_az                    = true                         # ✅ Multi-AZ ENABLED - Critical for HA
 db_create_read_replica         = true                         # ✅ Read replicas ENABLED
