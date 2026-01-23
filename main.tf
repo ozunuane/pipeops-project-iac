@@ -109,6 +109,7 @@ module "rds" {
   deletion_protection     = var.environment == "prod" ? true : false
   skip_final_snapshot     = var.environment == "prod" ? false : true
 
+
   # High Availability Configuration
   multi_az                    = var.db_multi_az
   create_read_replica         = var.db_create_read_replica
