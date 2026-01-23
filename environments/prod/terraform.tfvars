@@ -20,7 +20,7 @@ cluster_exists     = false # Set to true after EKS cluster is created (enables H
 
 # RDS Configuration - PRODUCTION with Multi-AZ + Read Replicas
 db_instance_class              = "db.r6g.xlarge"              # Larger instance for production
-db_allocated_storage           = 300                        # 400 GB initial storage (minimum for provisioned IOPS)
+db_allocated_storage           = 400                        # 400 GB initial storage (minimum for provisioned IOPS)
 db_backup_retention            = 30                           # 30 days backup retention
 db_multi_az                    = true                         # ✅ Multi-AZ ENABLED - Critical for HA
 db_create_read_replica         = true                         # ✅ Read replicas ENABLED
