@@ -17,7 +17,7 @@ resource "aws_eks_cluster" "main" {
   # Reference: https://docs.aws.amazon.com/eks/latest/userguide/automode.html
   compute_config {
     enabled       = true
-    node_pools    = ["general-purpose", "system"]  # Auto Mode managed node pools
+    node_pools    = ["general-purpose", "system"] # Auto Mode managed node pools
     node_role_arn = aws_iam_role.node.arn
   }
 
@@ -26,13 +26,13 @@ resource "aws_eks_cluster" "main" {
 
   kubernetes_network_config {
     elastic_load_balancing {
-      enabled = true  # Enable ALB/NLB integration
+      enabled = true # Enable ALB/NLB integration
     }
   }
 
   storage_config {
     block_storage {
-      enabled = true  # Enable EBS CSI driver auto-provisioning
+      enabled = true # Enable EBS CSI driver auto-provisioning
     }
   }
 
