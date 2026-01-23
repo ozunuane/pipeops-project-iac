@@ -14,7 +14,7 @@ public_subnet_cidrs   = ["10.2.101.0/24", "10.2.102.0/24", "10.2.103.0/24"]
 database_subnet_cidrs = ["10.2.201.0/24", "10.2.202.0/24", "10.2.203.0/24"]
 
 # EKS Configuration
-kubernetes_version = "1.28"
+kubernetes_version = "1.33"
 
 # RDS Configuration - DEVELOPMENT (Cost-optimized, Single-AZ)
 db_instance_class              = "db.t4g.medium" # Burstable instance for cost savings

@@ -199,29 +199,36 @@ resource "aws_db_parameter_group" "main" {
   family = "postgres${split(".", var.postgres_version)[0]}"
   name   = "${var.project_name}-${var.environment}-postgres${split(".", var.postgres_version)[0]}-params"
 
+  # Static parameters require pending-reboot apply method
   parameter {
-    name  = "shared_preload_libraries"
-    value = "pg_stat_statements"
+    name         = "shared_preload_libraries"
+    value        = "pg_stat_statements"
+    apply_method = "pending-reboot"
+  }
+
+  # Dynamic parameters can use immediate apply
+  parameter {
+    name         = "log_statement"
+    value        = "all"
+    apply_method = "immediate"
   }
 
   parameter {
-    name  = "log_statement"
-    value = "all"
+    name         = "log_min_duration_statement"
+    value        = "1000"
+    apply_method = "immediate"
   }
 
   parameter {
-    name  = "log_min_duration_statement"
-    value = "1000"
+    name         = "log_connections"
+    value        = "1"
+    apply_method = "immediate"
   }
 
   parameter {
-    name  = "log_connections"
-    value = "1"
-  }
-
-  parameter {
-    name  = "log_disconnections"
-    value = "1"
+    name         = "log_disconnections"
+    value        = "1"
+    apply_method = "immediate"
   }
 
   tags = var.tags
@@ -265,6 +272,10 @@ resource "aws_cloudwatch_log_group" "upgrade" {
 resource "aws_secretsmanager_secret" "db_credentials" {
   name        = "${var.project_name}/${var.environment}/rds/credentials"
   description = "Database credentials for ${var.project_name} ${var.environment}"
+
+  # Set to 0 to allow immediate recreation if deleted
+  # This prevents "secret scheduled for deletion" errors
+  recovery_window_in_days = 0
 
   tags = var.tags
 }
