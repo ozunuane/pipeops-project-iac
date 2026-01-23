@@ -18,6 +18,9 @@ resource "aws_eks_cluster" "main" {
     node_pools = ["general-purpose"] # Auto Mode manages node pools
   }
 
+  # When Auto Mode is enabled, bootstrapSelfManagedAddons must be false
+  bootstrap_self_managed_addons = false
+
   kubernetes_network_config {
     elastic_load_balancing {
       enabled = true # Enable ALB/NLB integration
