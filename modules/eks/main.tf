@@ -14,8 +14,9 @@ resource "aws_eks_cluster" "main" {
 
   # Enable EKS Auto Mode (all three configs must be set together)
   compute_config {
-    enabled    = true
-    node_pools = ["general-purpose"] # Auto Mode manages node pools
+    enabled       = true
+    node_pools    = ["general-purpose"]   # Auto Mode manages node pools
+    node_role_arn = aws_iam_role.node.arn # Required when node_pools is populated
   }
 
   # When Auto Mode is enabled, bootstrapSelfManagedAddons must be false

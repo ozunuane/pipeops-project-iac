@@ -39,7 +39,7 @@ variable "allowed_cidr_blocks" {
 variable "postgres_version" {
   description = "PostgreSQL engine version"
   type        = string
-  default     = "15.5"  # Updated from 15.4 (not available) to 15.5
+  default     = "16.1" # PostgreSQL 16.1 (15.x versions may not be available in all regions)
 }
 
 variable "db_instance_class" {
