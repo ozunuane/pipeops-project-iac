@@ -12,11 +12,13 @@ resource "aws_eks_cluster" "main" {
     security_group_ids      = [aws_security_group.cluster.id]
   }
 
-  # Enable EKS Auto Mode (all three configs must be set together)
+  # EKS Auto Mode Configuration
+  # When Auto Mode is enabled with node_pools, node_role_arn is required
+  # Reference: https://docs.aws.amazon.com/eks/latest/userguide/automode.html
   compute_config {
     enabled       = true
-    node_pools    = ["general-purpose"]   # Auto Mode manages node pools
-    node_role_arn = aws_iam_role.node.arn # Required when node_pools is populated
+    node_pools    = ["general-purpose", "system"]  # Auto Mode managed node pools
+    node_role_arn = aws_iam_role.node.arn
   }
 
   # When Auto Mode is enabled, bootstrapSelfManagedAddons must be false
@@ -24,13 +26,13 @@ resource "aws_eks_cluster" "main" {
 
   kubernetes_network_config {
     elastic_load_balancing {
-      enabled = true # Enable ALB/NLB integration
+      enabled = true  # Enable ALB/NLB integration
     }
   }
 
   storage_config {
     block_storage {
-      enabled = true # Enable EBS CSI driver auto-provisioning
+      enabled = true  # Enable EBS CSI driver auto-provisioning
     }
   }
 
@@ -48,6 +50,11 @@ resource "aws_eks_cluster" "main" {
   depends_on = [
     aws_iam_role_policy_attachment.cluster_AmazonEKSClusterPolicy,
     aws_cloudwatch_log_group.cluster,
+    # Node role must exist before cluster creation (required for Auto Mode)
+    aws_iam_role.node,
+    aws_iam_role_policy_attachment.node_AmazonEKSWorkerNodePolicy,
+    aws_iam_role_policy_attachment.node_AmazonEKS_CNI_Policy,
+    aws_iam_role_policy_attachment.node_AmazonEC2ContainerRegistryReadOnly,
   ]
 
   tags = var.tags
@@ -209,41 +216,21 @@ resource "aws_security_group_rule" "cluster_to_nodes" {
   type                     = "egress"
 }
 
-# EKS Auto Mode Compute Configuration
-# Note: Auto Mode is relatively new, adjust configuration as needed
-resource "aws_eks_node_group" "auto_mode" {
-  cluster_name    = aws_eks_cluster.main.name
-  node_group_name = "${var.cluster_name}-auto-mode-nodes"
-  node_role_arn   = aws_iam_role.node.arn
-  subnet_ids      = var.private_subnet_ids
-
-  capacity_type  = "ON_DEMAND"
-  instance_types = var.node_instance_types
-
-  scaling_config {
-    desired_size = var.desired_capacity
-    max_size     = var.max_capacity
-    min_size     = var.min_capacity
-  }
-
-  update_config {
-    max_unavailable = 1
-  }
-
-  # Auto Mode configuration
-  remote_access {
-    ec2_ssh_key               = var.key_pair_name
-    source_security_group_ids = [aws_security_group.node.id]
-  }
-
-  depends_on = [
-    aws_iam_role_policy_attachment.node_AmazonEKSWorkerNodePolicy,
-    aws_iam_role_policy_attachment.node_AmazonEKS_CNI_Policy,
-    aws_iam_role_policy_attachment.node_AmazonEC2ContainerRegistryReadOnly,
-  ]
-
-  tags = var.tags
-}
+# ==========================================
+# NOTE: Manual node group REMOVED
+# ==========================================
+# When EKS Auto Mode is enabled (compute_config.enabled = true with node_pools),
+# AWS automatically manages node groups. Creating manual aws_eks_node_group
+# resources will conflict with Auto Mode.
+#
+# Auto Mode handles:
+# - Node provisioning and scaling
+# - Instance type selection
+# - Node upgrades and patching
+# - Security configuration
+#
+# Reference: https://docs.aws.amazon.com/eks/latest/userguide/automode.html
+# ==========================================
 
 # IAM role for EKS Node Group
 resource "aws_iam_role" "node" {

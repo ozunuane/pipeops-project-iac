@@ -39,7 +39,8 @@ variable "allowed_cidr_blocks" {
 variable "postgres_version" {
   description = "PostgreSQL engine version"
   type        = string
-  default     = "16.1" # PostgreSQL 16.1 (15.x versions may not be available in all regions)
+  default     = "16.3"  # PostgreSQL 16.3 - widely available in all AWS regions
+  # To list available versions: aws rds describe-db-engine-versions --engine postgres --query 'DBEngineVersions[].EngineVersion'
 }
 
 variable "db_instance_class" {
