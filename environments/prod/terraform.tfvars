@@ -15,7 +15,7 @@ database_subnet_cidrs = ["10.0.201.0/24", "10.0.202.0/24", "10.0.203.0/24"]
 
 
 # EKS Configuration
-kubernetes_version = "1.28"
+kubernetes_version = "1.30"
 
 # RDS Configuration - PRODUCTION with Multi-AZ + Read Replicas
 db_instance_class              = "db.r6g.xlarge"              # Larger instance for production

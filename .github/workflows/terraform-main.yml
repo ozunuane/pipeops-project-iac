@@ -3,23 +3,19 @@ name: Terraform Main Infrastructure
 on:
   push:
     branches:
-      - main
       - develop
     paths:
       - '**.tf'
       - 'environments/**'
       - 'modules/**'
-      - 'scripts/**'
       - '.github/workflows/terraform-main.yml'
   pull_request:
     branches:
-      - main
       - develop
     paths:
       - '**.tf'
       - 'environments/**'
       - 'modules/**'
-      - 'scripts/**'
   workflow_dispatch:
     inputs:
       environment:
@@ -41,7 +37,7 @@ on:
 
 env:
   TF_VERSION: '1.5.0'
-  # AWS_REGION: us-west-2
+  # AWS_REGION: us-west-2  # Removed - now environment-specific
   PROJECT_NAME: pipeops  # Change this for other projects
 
 # Required permissions for OIDC authentication and PR comments
@@ -66,18 +62,14 @@ jobs:
             # Manual trigger - deploy specified environment independently
             echo "environments=[\"${{ github.event.inputs.environment }}\"]" >> $GITHUB_OUTPUT
             echo "should_deploy=true" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
-            # Develop branch - plan for all environments
+          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]] || [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            # Develop branch (push or PR) - plan for all environments (no apply)
             echo "environments=[\"dev\",\"staging\",\"prod\"]" >> $GITHUB_OUTPUT
             echo "should_deploy=true" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            # Main branch - no automatic deployments
+          else
+            # Other branches - no automatic deployments
             echo "environments=[]" >> $GITHUB_OUTPUT
             echo "should_deploy=false" >> $GITHUB_OUTPUT
-          else
-            # PR - just plan for all environments
-            echo "environments=[\"dev\",\"staging\",\"prod\"]" >> $GITHUB_OUTPUT
-            echo "should_deploy=true" >> $GITHUB_OUTPUT
           fi
 
   # Terraform deployment for main infrastructure (dev, staging, prod)
@@ -124,6 +116,25 @@ jobs:
             esac
           fi
           echo "Backend region: $(cat $GITHUB_OUTPUT | grep region | cut -d'=' -f2)"
+
+      - name: Determine AWS Role ARN
+        id: role-arn
+        run: |
+          case "${{ matrix.environment }}" in
+            dev)
+              echo "role_arn=${{ secrets.AWS_ROLE_ARN_DEV }}" >> $GITHUB_OUTPUT
+              ;;
+            staging)
+              echo "role_arn=${{ secrets.AWS_ROLE_ARN_STAGING }}" >> $GITHUB_OUTPUT
+              ;;
+            prod)
+              echo "role_arn=${{ secrets.AWS_ROLE_ARN_PROD }}" >> $GITHUB_OUTPUT
+              ;;
+            *)
+              echo "role_arn=${{ secrets.AWS_ROLE_ARN_PROD }}" >> $GITHUB_OUTPUT
+              ;;
+          esac
+          echo "Using role ARN for ${{ matrix.environment }} environment"
 
       - name: Configure AWS credentials (Dev)
         if: matrix.environment == 'dev'
@@ -219,17 +230,19 @@ jobs:
             -var-file="environments/${{ matrix.environment }}/terraform.tfvars" \
             -out=tfplan-${{ matrix.environment }} \
             -no-color | tee plan-output.txt
-          
-          # Save plan summary
-          echo "plan_exitcode=$?" >> $GITHUB_OUTPUT
 
       - name: Upload plan artifact
         uses: actions/upload-artifact@v4
         with:
           name: tfplan-${{ matrix.environment }}
-          path: |
-            tfplan-${{ matrix.environment }}
-            plan-output.txt
+          path: tfplan-${{ matrix.environment }}
+          retention-days: 5
+
+      - name: Upload plan output
+        uses: actions/upload-artifact@v4
+        with:
+          name: plan-output-${{ matrix.environment }}
+          path: plan-output.txt
           retention-days: 5
 
       - name: Comment PR with plan
@@ -259,75 +272,52 @@ jobs:
               body: output
             });
 
+      - name: Check apply conditions
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply'
+        run: |
+          if [[ "${{ matrix.environment }}" == "dev" ]]; then
+            echo "✅ Dev environment: Apply allowed from any branch"
+          elif [[ "${{ matrix.environment }}" == "staging" ]] || [[ "${{ matrix.environment }}" == "prod" ]]; then
+            if [[ "${{ github.ref }}" != "refs/heads/main" ]]; then
+              echo "⚠️ ${{ matrix.environment }} environment: Apply will be skipped (must be triggered from main branch)"
+              echo "Current branch: ${{ github.ref }}"
+              echo "Please select 'main' branch when triggering workflow_dispatch for ${{ matrix.environment }}"
+            else
+              echo "✅ ${{ matrix.environment }} environment: Apply allowed (triggered from main branch)"
+            fi
+          fi
+
       - name: Terraform Apply
         if: |
-          github.event_name == 'workflow_dispatch' &&
-          github.event.inputs.action == 'apply' &&
-          (
-            matrix.environment == 'dev' ||
+          github.event_name == 'workflow_dispatch' && 
+          github.event.inputs.action == 'apply' && (
+            (matrix.environment == 'dev') ||
             ((matrix.environment == 'staging' || matrix.environment == 'prod') && github.ref == 'refs/heads/main')
           )
         run: |
           terraform apply -auto-approve tfplan-${{ matrix.environment }}
 
-      - name: Terraform Destroy
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
-        run: |
-          terraform destroy \
-            -var-file="environments/${{ matrix.environment }}/terraform.tfvars" \
-            -auto-approve
-
       - name: Capture outputs
-        if: |
-          github.event_name == 'workflow_dispatch' &&
-          github.event.inputs.action == 'apply' &&
-          (
-            matrix.environment == 'dev' ||
-            ((matrix.environment == 'staging' || matrix.environment == 'prod') && github.ref == 'refs/heads/main')
-          )
         id: outputs
-        run: |
-          echo "eks_endpoint=$(terraform output -raw eks_cluster_endpoint 2>/dev/null || echo 'N/A')" >> $GITHUB_OUTPUT
-          echo "rds_endpoint=$(terraform output -raw rds_endpoint 2>/dev/null || echo 'N/A')" >> $GITHUB_OUTPUT
-          
-          # Save all outputs to file
-          terraform output -json > outputs-${{ matrix.environment }}.json
-
-      - name: Upload outputs
         if: |
-          github.event_name == 'workflow_dispatch' &&
-          github.event.inputs.action == 'apply' &&
-          (
-            matrix.environment == 'dev' ||
+          github.event_name == 'workflow_dispatch' && 
+          github.event.inputs.action == 'apply' && (
+            (matrix.environment == 'dev') ||
             ((matrix.environment == 'staging' || matrix.environment == 'prod') && github.ref == 'refs/heads/main')
           )
-        uses: actions/upload-artifact@v4
-        with:
-          name: outputs-${{ matrix.environment }}
-          path: outputs-${{ matrix.environment }}.json
-          retention-days: 30
-
-      - name: Notify on failure
-        if: failure()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.setFailed(`Terraform deployment failed for environment: ${{ matrix.environment }}`);
-
-  # Summary job to report overall status
-  deployment-summary:
-    needs: [determine-environments, terraform-deploy]
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - name: Generate deployment summary
         run: |
-          echo "## Terraform Deployment Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Workflow:** ${{ github.workflow }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Environments:** ${{ needs.determine-environments.outputs.environments }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Results" >> $GITHUB_STEP_SUMMARY
-          echo "- Main Infrastructure: ${{ needs.terraform-deploy.result }}" >> $GITHUB_STEP_SUMMARY
+          terraform output -json > outputs.json
+          echo "outputs<<EOF" >> $GITHUB_OUTPUT
+          cat outputs.json >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Terraform Destroy
+        if: |
+          github.event_name == 'workflow_dispatch' && 
+          github.event.inputs.action == 'destroy' && (
+            (matrix.environment == 'dev') ||
+            ((matrix.environment == 'staging' || matrix.environment == 'prod') && github.ref == 'refs/heads/main')
+          )
+        run: |
+          terraform destroy -auto-approve \
+            -var-file="environments/${{ matrix.environment }}/terraform.tfvars"
