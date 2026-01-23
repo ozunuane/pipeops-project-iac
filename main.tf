@@ -134,21 +134,23 @@ module "rds" {
 }
 
 # Configure Kubernetes and Helm providers after EKS cluster is created
+# Note: Set var.cluster_exists = true after first deployment creates EKS
 data "aws_eks_cluster_auth" "cluster" {
-  name = module.eks.cluster_name
+  count = var.cluster_exists ? 1 : 0
+  name  = module.eks.cluster_name
 }
 
 provider "kubernetes" {
-  host                   = module.eks.cluster_endpoint
-  cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
-  token                  = data.aws_eks_cluster_auth.cluster.token
+  host                   = var.cluster_exists ? module.eks.cluster_endpoint : ""
+  cluster_ca_certificate = var.cluster_exists ? base64decode(module.eks.cluster_certificate_authority_data) : ""
+  token                  = var.cluster_exists ? data.aws_eks_cluster_auth.cluster[0].token : ""
 }
 
 provider "helm" {
   kubernetes {
-    host                   = module.eks.cluster_endpoint
-    cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
-    token                  = data.aws_eks_cluster_auth.cluster.token
+    host                   = var.cluster_exists ? module.eks.cluster_endpoint : ""
+    cluster_ca_certificate = var.cluster_exists ? base64decode(module.eks.cluster_certificate_authority_data) : ""
+    token                  = var.cluster_exists ? data.aws_eks_cluster_auth.cluster[0].token : ""
   }
 }
 
@@ -160,8 +162,9 @@ provider "helm" {
 # Manual helm installation will conflict with Auto Mode.
 # ==========================================
 
-# ArgoCD Module
+# ArgoCD Module - Only deploy when cluster exists
 module "argocd" {
+  count  = var.cluster_exists && var.enable_argocd ? 1 : 0
   source = "./modules/argocd"
 
   cluster_name          = local.cluster_name
@@ -179,9 +182,9 @@ module "argocd" {
   depends_on = [module.eks]
 }
 
-# Monitoring Module
+# Monitoring Module - Only deploy when cluster exists
 module "monitoring" {
-  count = var.enable_monitoring ? 1 : 0
+  count = var.cluster_exists && var.enable_monitoring ? 1 : 0
 
   source = "./modules/monitoring"
 
@@ -203,7 +206,10 @@ module "monitoring" {
 }
 
 # External Secrets Operator for AWS Secrets Manager integration
+# Only deploy when cluster exists
 resource "helm_release" "external_secrets" {
+  count = var.cluster_exists ? 1 : 0
+
   name             = "external-secrets"
   repository       = "https://charts.external-secrets.io"
   chart            = "external-secrets"
@@ -216,14 +222,13 @@ resource "helm_release" "external_secrets" {
     value = "true"
   }
 
-  depends_on = [
-    module.eks
-  ]
+  depends_on = [module.eks]
 }
 
-# IAM role for External Secrets Operator
+# IAM role for External Secrets Operator - Only when cluster exists
 resource "aws_iam_role" "external_secrets" {
-  name = "${local.cluster_name}-external-secrets"
+  count = var.cluster_exists ? 1 : 0
+  name  = "${local.cluster_name}-external-secrets"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -249,8 +254,9 @@ resource "aws_iam_role" "external_secrets" {
 
 # IAM policy for External Secrets Operator
 resource "aws_iam_role_policy" "external_secrets" {
-  name = "${local.cluster_name}-external-secrets"
-  role = aws_iam_role.external_secrets.id
+  count = var.cluster_exists ? 1 : 0
+  name  = "${local.cluster_name}-external-secrets"
+  role  = aws_iam_role.external_secrets[0].id
 
   policy = jsonencode({
     Version = "2012-10-17"
