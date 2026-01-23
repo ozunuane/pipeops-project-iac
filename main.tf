@@ -118,7 +118,7 @@ module "rds" {
   replica_availability_zones  = var.db_replica_availability_zones
 
   # Performance Configuration
-  iops                           = var.db_iops
+  # iops                           = var.db_iops
   performance_insights_retention = var.environment == "prod" ? 31 : 7
 
   # Monitoring Configuration

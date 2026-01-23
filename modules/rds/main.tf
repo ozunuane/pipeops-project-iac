@@ -16,7 +16,7 @@ resource "aws_db_instance" "main" {
   storage_type          = "gp3"
   storage_encrypted     = true
   kms_key_id            = aws_kms_key.rds.arn
-  iops                  = var.iops
+  # iops                  = var.iops
 
   # Database name and credentials
   db_name  = var.database_name
