@@ -38,15 +38,10 @@ output "node_security_group_id" {
   value       = aws_security_group.node.id
 }
 
-output "node_group_arn" {
-  description = "Amazon Resource Name (ARN) of the EKS Node Group"
-  value       = aws_eks_node_group.auto_mode.arn
-}
-
-output "node_group_status" {
-  description = "Status of the EKS Node Group"
-  value       = aws_eks_node_group.auto_mode.status
-}
+# Note: node_group_arn and node_group_status outputs removed
+# EKS Auto Mode manages node groups automatically - they are not Terraform-managed resources
+# Use AWS Console or CLI to view Auto Mode node pool status:
+#   aws eks describe-nodegroup --cluster-name <cluster> --nodegroup-name <nodegroup>
 
 output "cluster_oidc_issuer_url" {
   description = "The URL on the EKS cluster for the OpenID Connect identity provider"
