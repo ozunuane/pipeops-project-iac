@@ -102,37 +102,37 @@ output "rds_dr_note" {
   value       = "RDS DR replica is managed by the DR workspace (dr-infrastructure/). Use the primary RDS ARN to configure it."
 }
 
-# ArgoCD Outputs
+# ArgoCD Outputs (conditional on cluster_exists)
 output "argocd_namespace" {
   description = "ArgoCD namespace"
-  value       = module.argocd.argocd_namespace
+  value       = var.cluster_exists && var.enable_argocd ? module.argocd[0].argocd_namespace : null
 }
 
 output "argocd_server_url" {
   description = "ArgoCD server URL"
-  value       = module.argocd.argocd_server_url
+  value       = var.cluster_exists && var.enable_argocd ? module.argocd[0].argocd_server_url : null
 }
 
 output "argocd_admin_password" {
   description = "ArgoCD admin password"
-  value       = module.argocd.argocd_admin_password
+  value       = var.cluster_exists && var.enable_argocd ? module.argocd[0].argocd_admin_password : null
   sensitive   = true
 }
 
-# Monitoring Outputs (conditional)
+# Monitoring Outputs (conditional on cluster_exists)
 output "prometheus_url" {
   description = "Prometheus URL"
-  value       = var.enable_monitoring ? module.monitoring[0].prometheus_url : null
+  value       = var.cluster_exists && var.enable_monitoring ? module.monitoring[0].prometheus_url : null
 }
 
 output "grafana_url" {
   description = "Grafana URL"
-  value       = var.enable_monitoring ? module.monitoring[0].grafana_url : null
+  value       = var.cluster_exists && var.enable_monitoring ? module.monitoring[0].grafana_url : null
 }
 
 output "grafana_admin_password" {
   description = "Grafana admin password"
-  value       = var.enable_monitoring ? module.monitoring[0].grafana_admin_password : null
+  value       = var.cluster_exists && var.enable_monitoring ? module.monitoring[0].grafana_admin_password : null
   sensitive   = true
 }
 
