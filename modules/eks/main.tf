@@ -12,6 +12,13 @@ resource "aws_eks_cluster" "main" {
     security_group_ids      = [aws_security_group.cluster.id]
   }
 
+  # Access configuration - Required for EKS Auto Mode
+  # Must be API_AND_CONFIG_MAP or API when Auto Mode is enabled
+  access_config {
+    authentication_mode                         = "API_AND_CONFIG_MAP"
+    bootstrap_cluster_creator_admin_permissions = true
+  }
+
   # EKS Auto Mode Configuration
   # When Auto Mode is enabled with node_pools, node_role_arn is required
   # Reference: https://docs.aws.amazon.com/eks/latest/userguide/automode.html
