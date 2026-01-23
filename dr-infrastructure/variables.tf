@@ -67,7 +67,7 @@ variable "dr_database_subnet_cidrs" {
 variable "kubernetes_version" {
   description = "Kubernetes version (should match primary cluster)"
   type        = string
-  default     = "1.28"
+  default     = "1.33"
 }
 
 variable "dr_cluster_endpoint_public_access_cidrs" {
