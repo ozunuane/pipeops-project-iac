@@ -152,83 +152,13 @@ provider "helm" {
   }
 }
 
-# AWS Load Balancer Controller
-resource "helm_release" "aws_load_balancer_controller" {
-  name       = "aws-load-balancer-controller"
-  repository = "https://aws.github.io/eks-charts"
-  chart      = "aws-load-balancer-controller"
-  version    = "1.6.2"
-  namespace  = "kube-system"
-
-  set {
-    name  = "clusterName"
-    value = module.eks.cluster_name
-  }
-
-  set {
-    name  = "serviceAccount.create"
-    value = "true"
-  }
-
-  set {
-    name  = "serviceAccount.name"
-    value = "aws-load-balancer-controller"
-  }
-
-  set {
-    name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-    value = aws_iam_role.aws_load_balancer_controller.arn
-  }
-
-  set {
-    name  = "region"
-    value = var.region
-  }
-
-  set {
-    name  = "vpcId"
-    value = module.vpc.vpc_id
-  }
-
-  depends_on = [
-    module.eks,
-    aws_iam_role.aws_load_balancer_controller
-  ]
-}
-
-# IAM role for AWS Load Balancer Controller
-resource "aws_iam_role" "aws_load_balancer_controller" {
-  name = "${local.cluster_name}-aws-load-balancer-controller"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Federated = module.eks.oidc_provider_arn
-        }
-        Condition = {
-          StringEquals = {
-            "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:sub" : "system:serviceaccount:kube-system:aws-load-balancer-controller"
-            "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:aud" : "sts.amazonaws.com"
-          }
-        }
-      }
-    ]
-  })
-
-  tags = var.tags
-}
-
-# IAM policy for AWS Load Balancer Controller
-resource "aws_iam_role_policy" "aws_load_balancer_controller" {
-  name = "${local.cluster_name}-aws-load-balancer-controller"
-  role = aws_iam_role.aws_load_balancer_controller.id
-
-  policy = file("${path.module}/policies/aws-load-balancer-controller-iam-policy.json")
-}
+# ==========================================
+# AWS LOAD BALANCER CONTROLLER - REMOVED FOR AUTO MODE
+# ==========================================
+# EKS Auto Mode with kubernetes_network_config.elastic_load_balancing.enabled = true
+# automatically installs and manages the AWS Load Balancer Controller.
+# Manual helm installation will conflict with Auto Mode.
+# ==========================================
 
 # ArgoCD Module
 module "argocd" {
@@ -246,10 +176,7 @@ module "argocd" {
   oidc_issuer_url       = module.eks.cluster_oidc_issuer_url
   tags                  = var.tags
 
-  depends_on = [
-    module.eks,
-    helm_release.aws_load_balancer_controller
-  ]
+  depends_on = [module.eks]
 }
 
 # Monitoring Module
@@ -272,10 +199,7 @@ module "monitoring" {
   oidc_issuer_url        = module.eks.cluster_oidc_issuer_url
   tags                   = var.tags
 
-  depends_on = [
-    module.eks,
-    helm_release.aws_load_balancer_controller
-  ]
+  depends_on = [module.eks]
 }
 
 # External Secrets Operator for AWS Secrets Manager integration
@@ -346,71 +270,28 @@ resource "aws_iam_role_policy" "external_secrets" {
   })
 }
 
-# Create EKS add-ons
-resource "aws_eks_addon" "coredns" {
-  cluster_name                = module.eks.cluster_name
-  addon_name                  = "coredns"
-  addon_version               = "v1.10.1-eksbuild.5"
-  resolve_conflicts_on_create = "OVERWRITE"
+# ==========================================
+# EKS ADD-ONS - REMOVED FOR AUTO MODE
+# ==========================================
+# When EKS Auto Mode is enabled with:
+#   - compute_config.enabled = true
+#   - storage_config.block_storage.enabled = true  
+#   - kubernetes_network_config.elastic_load_balancing.enabled = true
+#
+# AWS automatically manages these add-ons:
+#   - coredns
+#   - kube-proxy  
+#   - vpc-cni
+#   - aws-ebs-csi-driver
+#   - AWS Load Balancer Controller
+#
+# Manual creation of these add-ons will conflict with Auto Mode.
+# Reference: https://docs.aws.amazon.com/eks/latest/userguide/automode.html
+# ==========================================
 
-  depends_on = [module.eks]
-}
-
-resource "aws_eks_addon" "kube_proxy" {
-  cluster_name                = module.eks.cluster_name
-  addon_name                  = "kube-proxy"
-  addon_version               = "v1.28.2-eksbuild.2"
-  resolve_conflicts_on_create = "OVERWRITE"
-
-  depends_on = [module.eks]
-}
-
-resource "aws_eks_addon" "vpc_cni" {
-  cluster_name                = module.eks.cluster_name
-  addon_name                  = "vpc-cni"
-  addon_version               = "v1.15.4-eksbuild.1"
-  resolve_conflicts_on_create = "OVERWRITE"
-
-  depends_on = [module.eks]
-}
-
-resource "aws_eks_addon" "ebs_csi_driver" {
-  cluster_name                = module.eks.cluster_name
-  addon_name                  = "aws-ebs-csi-driver"
-  addon_version               = "v1.25.0-eksbuild.1"
-  resolve_conflicts_on_create = "OVERWRITE"
-  service_account_role_arn    = aws_iam_role.ebs_csi_driver.arn
-
-  depends_on = [module.eks]
-}
-
-# IAM role for EBS CSI driver
-resource "aws_iam_role" "ebs_csi_driver" {
-  name = "${local.cluster_name}-ebs-csi-driver"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Federated = module.eks.oidc_provider_arn
-        }
-        Condition = {
-          StringEquals = {
-            "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:sub" : "system:serviceaccount:kube-system:ebs-csi-controller-sa"
-            "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:aud" : "sts.amazonaws.com"
-          }
-        }
-      }
-    ]
-  })
-
-  tags = var.tags
-}
-
-resource "aws_iam_role_policy_attachment" "ebs_csi_driver" {
-  role       = aws_iam_role.ebs_csi_driver.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/Amazon_EBS_CSI_DriverPolicy"
-}
+# ==========================================
+# EBS CSI DRIVER IAM - REMOVED FOR AUTO MODE
+# ==========================================
+# EKS Auto Mode with storage_config.block_storage.enabled = true
+# automatically manages the EBS CSI driver and its IAM permissions.
+# ==========================================
