@@ -77,7 +77,7 @@ resource "aws_db_instance" "read_replica" {
   # Storage
   storage_type      = "gp3"
   storage_encrypted = true
-  iops              = var.iops
+  # iops              = var.iops
 
   # Network & Security
   publicly_accessible    = false
