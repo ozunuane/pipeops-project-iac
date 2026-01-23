@@ -218,3 +218,4 @@ variable "dr_allowed_cidr_blocks" {
   type        = list(string)
   default     = []
 }
+
