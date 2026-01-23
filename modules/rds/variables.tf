@@ -151,11 +151,11 @@ variable "performance_insights_retention" {
   default     = 7
 }
 
-variable "iops" {
-  description = "The amount of provisioned IOPS for gp3 storage"
-  type        = number
-  default     = null
-}
+# variable "iops" {
+#   description = "The amount of provisioned IOPS for gp3 storage"
+#   type        = number
+#   default     = null
+# }
 
 # Multi-Region Disaster Recovery Variables
 variable "enable_cross_region_dr" {
