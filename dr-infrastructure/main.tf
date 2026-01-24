@@ -413,9 +413,25 @@ resource "aws_security_group" "dr_rds" {
   })
 }
 
-# KMS key for DR RDS encryption
+# ====================================================================
+# KMS Key for DR RDS
+# ====================================================================
+# Option 1: Use the KMS key created by primary workspace for cross-region backups
+# Option 2: Create a new KMS key if primary backup key is not provided
+
+# Try to look up the primary workspace's DR KMS key by alias
+data "aws_kms_key" "primary_backup_key" {
+  count = var.primary_backup_kms_key_arn == "" && var.enable_rds_dr_replica ? 1 : 0
+
+  # This is the alias created by the primary workspace for cross-region backups
+  key_id = "alias/${var.project_name}-${var.primary_environment}-rds-dr"
+}
+
+# Create a new KMS key only if:
+# 1. No primary_backup_kms_key_arn is provided, AND
+# 2. The data source lookup failed (key doesn't exist)
 resource "aws_kms_key" "dr_rds" {
-  count = var.enable_rds_dr_replica && var.primary_rds_arn != "" ? 1 : 0
+  count = var.enable_rds_dr_replica && var.primary_rds_arn != "" && var.primary_backup_kms_key_arn == "" && length(data.aws_kms_key.primary_backup_key) == 0 ? 1 : 0
 
   description             = "KMS key for DR RDS encryption in ${var.dr_region}"
   deletion_window_in_days = 7
@@ -429,10 +445,21 @@ resource "aws_kms_key" "dr_rds" {
 }
 
 resource "aws_kms_alias" "dr_rds" {
-  count = var.enable_rds_dr_replica && var.primary_rds_arn != "" ? 1 : 0
+  count = var.enable_rds_dr_replica && var.primary_rds_arn != "" && var.primary_backup_kms_key_arn == "" && length(data.aws_kms_key.primary_backup_key) == 0 ? 1 : 0
 
-  name          = "alias/${var.project_name}-${var.primary_environment}-rds-dr"
+  name          = "alias/${var.project_name}-${var.primary_environment}-rds-dr-new"
   target_key_id = aws_kms_key.dr_rds[0].key_id
+}
+
+# Local to determine which KMS key to use for DR RDS
+locals {
+  dr_rds_kms_key_arn = (
+    var.primary_backup_kms_key_arn != "" ? var.primary_backup_kms_key_arn : (
+      length(data.aws_kms_key.primary_backup_key) > 0 ? data.aws_kms_key.primary_backup_key[0].arn : (
+        length(aws_kms_key.dr_rds) > 0 ? aws_kms_key.dr_rds[0].arn : null
+      )
+    )
+  )
 }
 
 # IAM role for DR RDS monitoring
@@ -478,9 +505,9 @@ resource "aws_db_instance" "dr_replica" {
   # Multi-AZ in DR region for additional redundancy
   multi_az = var.dr_rds_multi_az
 
-  # Storage encryption
+  # Storage encryption - use primary backup KMS key or newly created key
   storage_encrypted = true
-  kms_key_id        = aws_kms_key.dr_rds[0].arn
+  kms_key_id        = local.dr_rds_kms_key_arn
 
   # Network - Use DR VPC
   db_subnet_group_name   = module.dr_vpc.database_subnet_group_name
@@ -500,7 +527,7 @@ resource "aws_db_instance" "dr_replica" {
 
   # Performance Insights
   performance_insights_enabled          = true
-  performance_insights_kms_key_id       = aws_kms_key.dr_rds[0].arn
+  performance_insights_kms_key_id       = local.dr_rds_kms_key_arn
   performance_insights_retention_period = 31
 
   # Snapshots

@@ -620,10 +620,14 @@ resource "aws_db_instance_automated_backups_replication" "cross_region" {
   retention_period       = var.backup_retention_period
 
   # Use provided KMS key or the created DR KMS key
-  # If dr_kms_key_id is provided, use it; otherwise use the auto-created key
-  kms_key_id = var.dr_kms_key_id != "" ? var.dr_kms_key_id : (
-    length(aws_kms_key.rds_dr) > 0 ? aws_kms_key.rds_dr[0].arn : null
-  )
+  # For encrypted instances, a KMS key is required in the destination region
+  kms_key_id = var.dr_kms_key_id != "" ? var.dr_kms_key_id : aws_kms_key.rds_dr[0].arn
+
+  # Ensure KMS key is created before backup replication (when using auto-created key)
+  depends_on = [
+    aws_kms_key.rds_dr,
+    aws_db_instance.main
+  ]
 }
 
 # CloudWatch alarms for DR replica (if enabled)
