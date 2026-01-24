@@ -129,6 +129,22 @@ output "dr_rds_security_group_id" {
   value       = var.enable_rds_dr_replica && var.primary_rds_arn != "" ? aws_security_group.dr_rds[0].id : null
 }
 
+output "dr_rds_kms_key_arn" {
+  description = "KMS key ARN used for DR RDS encryption (either from primary backup or newly created)"
+  value       = local.dr_rds_kms_key_arn
+}
+
+output "dr_rds_kms_key_source" {
+  description = "Source of the KMS key being used for DR RDS"
+  value = (
+    var.primary_backup_kms_key_arn != "" ? "provided-via-variable" : (
+      length(data.aws_kms_key.primary_backup_key) > 0 ? "primary-workspace-backup-key" : (
+        length(aws_kms_key.dr_rds) > 0 ? "newly-created" : "none"
+      )
+    )
+  )
+}
+
 output "dr_status" {
   description = "DR infrastructure deployment status"
   value = {

@@ -97,6 +97,16 @@ output "rds_cross_region_backups_enabled" {
   value       = module.rds.cross_region_backups_enabled
 }
 
+output "rds_dr_kms_key_arn" {
+  description = "ARN of the KMS key in DR region (created for cross-region backups or DR replica). Use this in DR workspace via data source."
+  value       = module.rds.dr_kms_key_arn
+}
+
+output "rds_dr_kms_key_id" {
+  description = "ID of the KMS key in DR region (created for cross-region backups or DR replica). Use this in DR workspace via data source."
+  value       = module.rds.dr_kms_key_id
+}
+
 output "rds_dr_note" {
   description = "Note about RDS DR replica management"
   value       = "RDS DR replica is managed by the DR workspace (dr-infrastructure/). Use the primary RDS ARN to configure it."

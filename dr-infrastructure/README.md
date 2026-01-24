@@ -409,6 +409,73 @@ aws dynamodb scan --table-name terraform-state-lock-dr --region us-east-1
 
 ## 🤝 Integration with Primary Infrastructure
 
+### Consuming Primary Workspace Outputs
+
+The DR workspace can consume outputs from the primary workspace using Terraform remote state or data sources.
+
+#### Option 1: Using Remote State (Recommended)
+
+```hcl
+# In dr-infrastructure/main.tf
+data "terraform_remote_state" "primary" {
+  backend = "s3"
+  
+  config = {
+    bucket         = "pipeops-prod-terraform-state"  # Primary workspace bucket
+    key            = "prod/terraform.tfstate"
+    region         = "us-west-2"  # Primary region
+    dynamodb_table = "pipeops-prod-terraform-locks"
+  }
+}
+
+# Use the KMS key ARN from primary workspace
+resource "aws_kms_key" "dr_rds" {
+  # Use primary's DR KMS key if available, otherwise create new
+  kms_key_id = data.terraform_remote_state.primary.outputs.rds_dr_kms_key_arn != null ? 
+    data.terraform_remote_state.primary.outputs.rds_dr_kms_key_arn : 
+    aws_kms_key.dr_rds_new[0].arn
+}
+```
+
+#### Option 2: Using Data Source (If KMS Key ARN is Known)
+
+```hcl
+# In dr-infrastructure/main.tf
+data "aws_kms_key" "primary_dr_backup_key" {
+  # Get the KMS key created by primary workspace for cross-region backups
+  # ARN format: arn:aws:kms:us-east-1:ACCOUNT_ID:key/KEY_ID
+  # Get this from primary workspace output: terraform output -raw rds_dr_kms_key_arn
+  key_id = "alias/pipeops-prod-rds-dr"  # Or use full ARN
+}
+
+# Use it in your DR RDS configuration
+resource "aws_db_instance" "dr_replica" {
+  # ... other config ...
+  kms_key_id = data.aws_kms_key.primary_dr_backup_key.arn
+}
+```
+
+#### Available Primary Workspace Outputs
+
+After deploying the primary workspace, you can access:
+
+```bash
+# Get KMS key ARN for DR region backups
+terraform output -raw rds_dr_kms_key_arn
+
+# Get KMS key ID
+terraform output -raw rds_dr_kms_key_id
+
+# Get primary RDS ARN (needed for DR replica)
+terraform output -raw rds_arn
+```
+
+**Note**: The `rds_dr_kms_key_arn` and `rds_dr_kms_key_id` outputs are available when:
+- `enable_cross_region_backups = true` (for backup replication), OR
+- `enable_cross_region_dr = true` (for DR replica)
+
+This allows the DR workspace to reuse the same KMS key created by the primary workspace, avoiding key proliferation and ensuring consistent encryption.
+
 ### RDS Connection
 
 The DR EKS cluster can connect to the DR RDS replica:
