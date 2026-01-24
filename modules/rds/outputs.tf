@@ -118,6 +118,15 @@ output "cross_region_backups_enabled" {
 }
 
 output "dr_kms_key_arn" {
-  description = "KMS key ARN in DR region"
-  value       = var.enable_cross_region_dr && var.dr_kms_key_id == "" ? aws_kms_key.rds_dr[0].arn : var.dr_kms_key_id
+  description = "KMS key ARN in DR region (created for cross-region backups or DR replica)"
+  value = (var.enable_cross_region_dr || var.enable_cross_region_backups) && var.dr_kms_key_id == "" ? aws_kms_key.rds_dr[0].arn : (
+    var.dr_kms_key_id != "" ? var.dr_kms_key_id : null
+  )
+}
+
+output "dr_kms_key_id" {
+  description = "KMS key ID in DR region (created for cross-region backups or DR replica)"
+  value = (var.enable_cross_region_dr || var.enable_cross_region_backups) && var.dr_kms_key_id == "" ? aws_kms_key.rds_dr[0].id : (
+    var.dr_kms_key_id != "" ? var.dr_kms_key_id : null
+  )
 }

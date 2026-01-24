@@ -139,6 +139,12 @@ variable "dr_rds_multi_az" {
   default     = true
 }
 
+variable "primary_backup_kms_key_arn" {
+  description = "ARN of the KMS key used by primary workspace for cross-region backups. Get this from primary workspace output: terraform output -raw rds_dr_kms_key_arn"
+  type        = string
+  default     = ""
+}
+
 # ====================================================================
 # Tags
 # ====================================================================
