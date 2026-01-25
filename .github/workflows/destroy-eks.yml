@@ -1,0 +1,216 @@
+# ============================================
+# EKS Cluster Destroy Workflow
+# ============================================
+# Manual workflow to destroy EKS cluster only
+# Use with caution - this is destructive!
+#
+# IMPORTANT: This workflow ONLY runs from the 'destroy-eks' branch
+# This adds an extra layer of protection against accidental destruction.
+#
+# Usage:
+#   1. Create/checkout the 'destroy-eks' branch
+#   2. Actions > Destroy EKS Cluster > Run workflow
+#   3. Select 'destroy-eks' branch and fill in inputs
+# ============================================
+
+name: Destroy EKS Cluster
+
+on:
+  workflow_dispatch:
+    branches:
+      - destroy-eks
+    inputs:
+      environment:
+        description: 'Environment to destroy EKS cluster in'
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      confirm_destroy:
+        description: 'Type "DESTROY" to confirm cluster destruction'
+        required: true
+        type: string
+      destroy_backups:
+        description: 'Also destroy backup resources (vault, plans)?'
+        required: false
+        type: boolean
+        default: false
+
+# Prevent concurrent destroys
+concurrency:
+  group: destroy-eks-${{ github.event.inputs.environment }}
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: "1.6.0"
+  AWS_REGION: "us-west-2"
+  PROJECT_NAME: "pipeops"
+
+jobs:
+  validate:
+    name: Validate Destroy Request
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+    steps:
+      - name: Validate confirmation
+        id: check
+        run: |
+          if [ "${{ github.event.inputs.confirm_destroy }}" != "DESTROY" ]; then
+            echo "❌ Confirmation failed. You must type 'DESTROY' to proceed."
+            echo "proceed=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          echo "✅ Destruction confirmed for ${{ github.event.inputs.environment }}"
+          echo "proceed=true" >> $GITHUB_OUTPUT
+
+      - name: Production warning
+        if: github.event.inputs.environment == 'prod'
+        run: |
+          echo "⚠️ WARNING: You are about to destroy the PRODUCTION EKS cluster!"
+          echo "⚠️ This action is IRREVERSIBLE and will cause downtime!"
+          echo "⚠️ All workloads running on the cluster will be terminated!"
+          sleep 10
+
+  destroy-eks:
+    name: Destroy EKS - ${{ github.event.inputs.environment }}
+    needs: validate
+    if: needs.validate.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: github-eks-destroy-${{ github.event.inputs.environment }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        working-directory: .
+        run: |
+          terraform init \
+            -backend-config=environments/${{ github.event.inputs.environment }}/backend.conf
+
+      - name: List Resources to Destroy
+        working-directory: .
+        run: |
+          echo "📋 Resources that will be destroyed:"
+          echo ""
+          
+          # List EKS resources
+          terraform state list | grep -E "^module\.eks\." || echo "No EKS resources found"
+          
+          # Optionally list backup resources
+          if [ "${{ github.event.inputs.destroy_backups }}" == "true" ]; then
+            echo ""
+            echo "📋 Backup resources that will also be destroyed:"
+            terraform state list | grep -E "backup|aws_kms_key\.backup" || echo "No backup resources found"
+          fi
+
+      - name: Delete Helm Releases First
+        continue-on-error: true
+        run: |
+          # Configure kubectl
+          aws eks update-kubeconfig --name ${{ env.PROJECT_NAME }}-${{ github.event.inputs.environment }}-eks --region ${{ env.AWS_REGION }}
+          
+          echo "🗑️ Deleting Helm releases to avoid stuck resources..."
+          
+          # Delete ArgoCD
+          helm uninstall argocd -n argocd --wait --timeout 5m 2>/dev/null || echo "ArgoCD not found or already deleted"
+          
+          # Delete External Secrets
+          helm uninstall external-secrets -n external-secrets-system --wait --timeout 5m 2>/dev/null || echo "External Secrets not found or already deleted"
+          
+          # Delete Monitoring
+          helm uninstall prometheus-stack -n monitoring --wait --timeout 5m 2>/dev/null || echo "Prometheus not found or already deleted"
+          
+          # Delete namespaces
+          kubectl delete namespace argocd --timeout=60s 2>/dev/null || true
+          kubectl delete namespace external-secrets-system --timeout=60s 2>/dev/null || true
+          kubectl delete namespace monitoring --timeout=60s 2>/dev/null || true
+
+      - name: Destroy EKS Cluster
+        working-directory: .
+        run: |
+          echo "🔥 Destroying EKS cluster..."
+          
+          # First destroy Helm-related resources from state
+          terraform destroy \
+            -target=helm_release.argocd \
+            -target=helm_release.external_secrets \
+            -target=module.monitoring \
+            -var-file=environments/${{ github.event.inputs.environment }}/terraform.tfvars \
+            -auto-approve || true
+          
+          # Then destroy EKS module
+          terraform destroy \
+            -target=module.eks \
+            -var-file=environments/${{ github.event.inputs.environment }}/terraform.tfvars \
+            -auto-approve
+
+      - name: Destroy Backup Resources (if requested)
+        if: github.event.inputs.destroy_backups == 'true'
+        working-directory: .
+        run: |
+          echo "🔥 Destroying backup resources..."
+          
+          terraform destroy \
+            -target=aws_backup_selection.eks \
+            -target=aws_backup_plan.eks_daily \
+            -target=aws_backup_vault.eks \
+            -target=aws_backup_vault.eks_dr \
+            -target=aws_kms_key.backup \
+            -target=aws_kms_key.backup_dr \
+            -target=aws_iam_role.backup \
+            -var-file=environments/${{ github.event.inputs.environment }}/terraform.tfvars \
+            -auto-approve || true
+
+      - name: Cleanup Instance Profiles
+        continue-on-error: true
+        run: |
+          echo "🧹 Cleaning up orphaned instance profiles..."
+          
+          # List and delete any EKS-created instance profiles
+          for profile in $(aws iam list-instance-profiles --query "InstanceProfiles[?starts_with(InstanceProfileName, 'eks-${{ env.AWS_REGION }}-${{ env.PROJECT_NAME }}-${{ github.event.inputs.environment }}')].InstanceProfileName" --output text); do
+            echo "Deleting instance profile: $profile"
+            
+            # Remove role if attached
+            ROLE=$(aws iam get-instance-profile --instance-profile-name "$profile" --query 'InstanceProfile.Roles[0].RoleName' --output text 2>/dev/null || echo "None")
+            if [ "$ROLE" != "None" ] && [ -n "$ROLE" ]; then
+              aws iam remove-role-from-instance-profile --instance-profile-name "$profile" --role-name "$ROLE" 2>/dev/null || true
+            fi
+            
+            aws iam delete-instance-profile --instance-profile-name "$profile" 2>/dev/null || true
+          done
+
+      - name: Summary
+        run: |
+          echo "## 🔥 EKS Cluster Destroyed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Detail | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | ${{ github.event.inputs.environment }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Cluster | ${{ env.PROJECT_NAME }}-${{ github.event.inputs.environment }}-eks |" >> $GITHUB_STEP_SUMMARY
+          echo "| Backups Destroyed | ${{ github.event.inputs.destroy_backups }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Triggered By | @${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Time | $(date -u) |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "To recreate the cluster, run the main Terraform workflow with \`apply\` action." >> $GITHUB_STEP_SUMMARY
