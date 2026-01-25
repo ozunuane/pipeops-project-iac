@@ -82,7 +82,7 @@ resource "aws_eks_cluster" "main" {
   # - Replace if IAM roles change (ensures proper permissions on new cluster)
   lifecycle {
     create_before_destroy = false
-    
+
     # # Force replacement if these critical resources change
     # replace_triggered_by = [
     #   aws_iam_role.cluster.arn,
