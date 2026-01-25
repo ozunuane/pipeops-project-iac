@@ -33,8 +33,10 @@ locals {
 
 # Random passwords for security
 resource "random_password" "db_password" {
-  length  = 16
-  special = true
+  length = 16
+  # RDS does not allow: '/', '@', '"', or space in passwords
+  special          = true
+  override_special = "!#$%&*()-_=+[]{}<>:?"
 }
 
 resource "random_password" "grafana_admin" {
