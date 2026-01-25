@@ -16,34 +16,36 @@ enable_dr_cluster      = true
 # DNS Configuration - Multiple Domains
 # ====================================================================
 # Configure one or more domains with their certificates
-# The first domain is considered the "primary" domain for service records
+# Set primary = true for the domain that should use failover routing
 
-domain_names = [
-  {
-    domain_name             = "example.com" # TODO: Replace with your primary domain
-    create_hosted_zone      = false         # Set to true if you want Terraform to create the zone
-    existing_hosted_zone_id = ""            # Required if create_hosted_zone = false
-    app_subdomain           = "app"         # Creates app.example.com
-    create_certificates     = true
-    subject_alternative_names = [
+domains = {
+  # Primary domain - uses failover routing
+  "example" = {
+    domain_name        = "example.com" # TODO: Replace with your primary domain
+    create_hosted_zone = false         # Set to true to create new zone
+    create_certificate = true
+    certificate_san = [
       "*.example.com", # Wildcard for all subdomains
       "api.example.com",
       "argocd.example.com",
       "grafana.example.com"
     ]
+    app_subdomain = "app" # Creates app.example.com
+    primary       = true  # This domain gets failover routing
   }
-  # Example: Add additional domains
-  # {
-  #   domain_name              = "secondary-domain.com"
-  #   create_hosted_zone       = true
-  #   existing_hosted_zone_id  = ""
-  #   app_subdomain            = ""   # Use root domain
-  #   create_certificates      = true
-  #   subject_alternative_names = [
-  #     "*.secondary-domain.com"
+
+  # Example: Add additional domains (uncomment and modify as needed)
+  # "secondary" = {
+  #   domain_name        = "secondary-domain.io"
+  #   create_hosted_zone = true
+  #   create_certificate = true
+  #   certificate_san = [
+  #     "*.secondary-domain.io"
   #   ]
+  #   app_subdomain = ""    # Use root domain
+  #   primary       = false # Uses simple routing
   # }
-]
+}
 
 # ====================================================================
 # Failover Configuration

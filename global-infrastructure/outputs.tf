@@ -7,25 +7,25 @@
 # ====================================================================
 
 output "hosted_zone_ids" {
-  description = "Map of hosted zone IDs by domain name"
+  description = "Map of hosted zone IDs by domain key"
   value       = local.hosted_zone_ids
 }
 
 output "hosted_zone_name_servers" {
   description = "Map of name servers by domain (only for created zones)"
   value = {
-    for key, zone in aws_route53_zone.main : key => zone.name_servers
+    for key, zone in aws_route53_zone.domains : key => zone.name_servers
   }
 }
 
 output "domain_names" {
   description = "List of all managed domain names"
-  value       = [for d in var.domain_names : d.domain_name]
+  value       = [for k, d in local.all_domains : d.domain_name]
 }
 
 output "primary_domain" {
-  description = "Primary domain name (first in the list)"
-  value       = length(var.domain_names) > 0 ? var.domain_names[0].domain_name : null
+  description = "Primary domain name"
+  value       = length(local.all_domains) > 0 ? local.primary_domain.domain_name : null
 }
 
 # ====================================================================
@@ -48,8 +48,8 @@ output "primary_certificate_statuses" {
 
 # Legacy single-domain output for backward compatibility
 output "primary_certificate_arn" {
-  description = "ARN of the ACM certificate in primary region (first domain)"
-  value       = length(aws_acm_certificate.primary) > 0 ? aws_acm_certificate.primary[local.primary_domain_key].arn : null
+  description = "ARN of the ACM certificate in primary region (primary domain)"
+  value       = length(aws_acm_certificate.primary) > 0 && contains(keys(aws_acm_certificate.primary), local.primary_domain_key) ? aws_acm_certificate.primary[local.primary_domain_key].arn : null
 }
 
 # ====================================================================
@@ -72,8 +72,8 @@ output "dr_certificate_statuses" {
 
 # Legacy single-domain output for backward compatibility
 output "dr_certificate_arn" {
-  description = "ARN of the ACM certificate in DR region (first domain)"
-  value       = length(aws_acm_certificate.dr) > 0 ? aws_acm_certificate.dr[local.primary_domain_key].arn : null
+  description = "ARN of the ACM certificate in DR region (primary domain)"
+  value       = length(aws_acm_certificate.dr) > 0 && contains(keys(aws_acm_certificate.dr), local.primary_domain_key) ? aws_acm_certificate.dr[local.primary_domain_key].arn : null
 }
 
 # ====================================================================
@@ -164,8 +164,8 @@ output "certificate_arns_by_domain" {
 output "certificate_arns" {
   description = "Map of certificate ARNs by region (primary domain only)"
   value = {
-    primary = length(aws_acm_certificate.primary) > 0 ? aws_acm_certificate.primary[local.primary_domain_key].arn : null
-    dr      = length(aws_acm_certificate.dr) > 0 ? aws_acm_certificate.dr[local.primary_domain_key].arn : null
+    primary = length(aws_acm_certificate.primary) > 0 && contains(keys(aws_acm_certificate.primary), local.primary_domain_key) ? aws_acm_certificate.primary[local.primary_domain_key].arn : null
+    dr      = length(aws_acm_certificate.dr) > 0 && contains(keys(aws_acm_certificate.dr), local.primary_domain_key) ? aws_acm_certificate.dr[local.primary_domain_key].arn : null
   }
 }
 
@@ -173,8 +173,8 @@ output "dns_configuration" {
   description = "DNS configuration for use in other workspaces"
   value = {
     hosted_zone_ids = local.hosted_zone_ids
-    domain_names    = [for d in var.domain_names : d.domain_name]
-    primary_domain  = length(var.domain_names) > 0 ? var.domain_names[0].domain_name : null
+    domain_names    = [for k, d in local.all_domains : d.domain_name]
+    primary_domain  = length(local.all_domains) > 0 ? local.primary_domain.domain_name : null
   }
 }
 
@@ -188,7 +188,7 @@ output "summary" {
     domains = {
       for key, domain in local.all_domains : key => {
         domain_name    = domain.domain_name
-        hosted_zone_id = local.hosted_zone_ids[key]
+        hosted_zone_id = contains(keys(local.hosted_zone_ids), key) ? local.hosted_zone_ids[key] : null
         primary_cert   = contains(keys(aws_acm_certificate.primary), key) ? aws_acm_certificate.primary[key].arn : null
         dr_cert        = contains(keys(aws_acm_certificate.dr), key) ? aws_acm_certificate.dr[key].arn : null
       }
