@@ -196,6 +196,13 @@ resource "helm_release" "external_secrets" {
   namespace        = "external-secrets-system"
   create_namespace = true
 
+  # Timeout for installation (EKS Auto Mode needs time to provision nodes)
+  timeout = 600
+
+  # Don't wait for pods - Auto Mode will provision nodes asynchronously
+  wait          = false
+  wait_for_jobs = false
+
   set {
     name  = "installCRDs"
     value = "true"

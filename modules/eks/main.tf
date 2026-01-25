@@ -257,6 +257,17 @@ resource "aws_iam_role" "node" {
   tags = var.tags
 }
 
+# Instance profile for EKS nodes (required for EKS Auto Mode)
+# EKS Auto Mode NodeClass references this to launch EC2 instances
+resource "aws_iam_instance_profile" "node" {
+  name = "${var.cluster_name}-eks-node-role"
+  role = aws_iam_role.node.name
+
+  tags = merge(var.tags, {
+    Name = "${var.cluster_name}-eks-node-instance-profile"
+  })
+}
+
 resource "aws_iam_role_policy_attachment" "node_AmazonEKSWorkerNodePolicy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
   role       = aws_iam_role.node.name

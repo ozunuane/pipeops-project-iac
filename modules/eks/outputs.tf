@@ -62,3 +62,13 @@ output "node_role_arn" {
   description = "IAM role ARN of the EKS node group"
   value       = aws_iam_role.node.arn
 }
+
+output "node_instance_profile_arn" {
+  description = "IAM instance profile ARN for EKS nodes (used by Auto Mode)"
+  value       = aws_iam_instance_profile.node.arn
+}
+
+output "node_instance_profile_name" {
+  description = "IAM instance profile name for EKS nodes (used by Auto Mode)"
+  value       = aws_iam_instance_profile.node.name
+}
