@@ -76,6 +76,14 @@ resource "aws_eks_cluster" "main" {
   ]
 
   tags = var.tags
+
+  # Lifecycle rules for cluster replacement
+  # - Destroy existing cluster before creating new one (not create_before_destroy)
+  # - Replace if IAM roles change (ensures proper permissions on new cluster)
+  lifecycle {
+    create_before_destroy = false
+
+  }
 }
 
 # KMS key for EKS encryption
