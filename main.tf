@@ -27,9 +27,6 @@ locals {
   # Generate a random password for the database
   db_password = random_password.db_password.result
 
-  # Generate ArgoCD admin password
-  argocd_admin_password = random_password.argocd_admin.result
-
   # Generate Grafana admin password
   grafana_admin_password = random_password.grafana_admin.result
 }
@@ -40,15 +37,13 @@ resource "random_password" "db_password" {
   special = true
 }
 
-resource "random_password" "argocd_admin" {
-  length  = 16
-  special = false
-}
-
 resource "random_password" "grafana_admin" {
   length  = 16
   special = false
 }
+
+# Note: ArgoCD generates its own initial admin password in a Kubernetes secret
+# Retrieve it with: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
 
 # VPC Module
 module "vpc" {
@@ -163,26 +158,6 @@ provider "helm" {
 # automatically installs and manages the AWS Load Balancer Controller.
 # Manual helm installation will conflict with Auto Mode.
 # ==========================================
-
-# ArgoCD Module - Only deploy when cluster exists
-module "argocd" {
-  count  = var.cluster_exists && var.enable_argocd ? 1 : 0
-  source = "./modules/argocd"
-
-  cluster_name          = local.cluster_name
-  argocd_domain         = "argocd.${var.project_name}.com" # Update with your domain
-  admin_password        = local.argocd_admin_password
-  admin_password_bcrypt = bcrypt(local.argocd_admin_password)
-  server_insecure       = true # Set to false in production with proper TLS
-  ha_mode               = var.environment == "prod" ? true : false
-  enable_metrics        = var.enable_monitoring
-  enable_ingress        = false # Enable when you have a proper domain and SSL cert
-  oidc_provider_arn     = module.eks.oidc_provider_arn
-  oidc_issuer_url       = module.eks.cluster_oidc_issuer_url
-  tags                  = var.tags
-
-  depends_on = [module.eks]
-}
 
 # Monitoring Module - Only deploy when cluster exists
 module "monitoring" {

@@ -64,6 +64,52 @@ variable "enable_argocd" {
   default     = true
 }
 
+# ====================================================================
+# ArgoCD Helm Configuration
+# ====================================================================
+
+variable "argocd_chart_version" {
+  description = "ArgoCD Helm chart version"
+  type        = string
+  default     = "5.51.6"
+}
+
+variable "argocd_image_tag" {
+  description = "ArgoCD image tag (leave empty for chart default)"
+  type        = string
+  default     = ""
+}
+
+variable "argocd_server_insecure" {
+  description = "Run ArgoCD server in insecure mode (no TLS). Use when behind a load balancer that handles TLS."
+  type        = bool
+  default     = true
+}
+
+variable "argocd_enable_ingress" {
+  description = "Enable ingress for ArgoCD server"
+  type        = bool
+  default     = false
+}
+
+variable "argocd_domain" {
+  description = "Domain for ArgoCD server ingress"
+  type        = string
+  default     = ""
+}
+
+variable "argocd_ssl_certificate_arn" {
+  description = "ACM certificate ARN for ArgoCD ingress"
+  type        = string
+  default     = ""
+}
+
+variable "argocd_enable_dex" {
+  description = "Enable Dex for SSO integration"
+  type        = bool
+  default     = false
+}
+
 variable "enable_monitoring" {
   description = "Enable monitoring stack (Prometheus, Grafana)"
   type        = bool
@@ -249,6 +295,82 @@ variable "dr_node_instance_types" {
   default     = ["t3.medium", "t3.large"]
 }
 
+# ====================================================================
+# ECR - Elastic Container Registry Variables
+# ====================================================================
+
+variable "ecr_repository_names" {
+  description = "List of ECR repository names to create"
+  type        = list(string)
+  default     = ["api", "web", "worker"]
+}
+
+variable "ecr_image_tag_mutability" {
+  description = "Image tag mutability for all repositories (MUTABLE or IMMUTABLE)"
+  type        = string
+  default     = "MUTABLE"
+}
+
+variable "ecr_scan_on_push" {
+  description = "Enable image scanning on push for all repositories"
+  type        = bool
+  default     = true
+}
+
+variable "ecr_lifecycle_keep_count" {
+  description = "Number of images to keep per repository"
+  type        = number
+  default     = 30
+}
+
+variable "ecr_lifecycle_expire_untagged_days" {
+  description = "Days before untagged images expire"
+  type        = number
+  default     = 14
+}
+
+variable "ecr_enable_replication" {
+  description = "Enable cross-region ECR replication for DR (only applies in prod)"
+  type        = bool
+  default     = true
+}
+
+variable "ecr_replication_regions" {
+  description = "AWS regions to replicate ECR images to (for DR)"
+  type        = list(string)
+  default     = ["us-east-1"] # DR region
+}
+
+variable "ecr_replication_account_ids" {
+  description = "AWS account IDs for cross-account ECR replication"
+  type        = list(string)
+  default     = []
+}
+
+variable "ecr_create_github_actions_policy" {
+  description = "Create IAM policy for GitHub Actions to push to ECR"
+  type        = bool
+  default     = true
+}
+
+variable "ecr_github_actions_role_arn" {
+  description = "ARN of the GitHub Actions OIDC role (for attaching ECR push policy)"
+  type        = string
+  default     = ""
+}
+
+variable "ecr_push_principals" {
+  description = "Additional IAM ARNs allowed to push images to ECR"
+  type        = list(string)
+  default     = []
+}
+
+variable "ecr_pull_principals" {
+  description = "Additional IAM ARNs allowed to pull images from ECR"
+  type        = list(string)
+  default     = []
+}
+
 variable "tags" {
   description = "Common tags for all resources"
   type        = map(string)
@@ -258,4 +380,38 @@ variable "tags" {
     ManagedBy   = "terraform"
     GitOps      = "argocd"
   }
+}
+
+# ====================================================================
+# AWS Backup Configuration
+# ====================================================================
+
+variable "enable_eks_backup" {
+  description = "Enable AWS Backup for EKS cluster"
+  type        = bool
+  default     = true
+}
+
+variable "backup_schedule" {
+  description = "Cron expression for backup schedule (default: daily at 6 AM UTC)"
+  type        = string
+  default     = "cron(0 6 * * ? *)"
+}
+
+variable "backup_retention_days" {
+  description = "Number of days to retain backups before deletion"
+  type        = number
+  default     = 35
+}
+
+variable "backup_cold_storage_after" {
+  description = "Number of days after which to move backups to cold storage (set to 0 to disable)"
+  type        = number
+  default     = 0
+}
+
+variable "enable_backup_cross_region_copy" {
+  description = "Enable cross-region backup copy to DR region"
+  type        = bool
+  default     = false
 }

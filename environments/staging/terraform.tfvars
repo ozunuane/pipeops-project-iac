@@ -37,12 +37,27 @@ db_dr_instance_class           = "db.r6g.large"
 db_dr_multi_az                 = false # Single-AZ in DR for staging
 db_enable_cross_region_backups = false # ❌ Disabled for cost savings
 
+# ECR Repositories
+ecr_repository_names = [
+  "titanic-api",
+  "frontend",
+  "backend"
+]
+ecr_enable_replication = false # No DR replication in staging
+
 # Feature Flags
 enable_argocd     = true
 enable_monitoring = true
 enable_logging    = true
 
 # Tags
+# AWS Backup Configuration
+enable_eks_backup               = true
+backup_schedule                 = "cron(0 6 * * ? *)" # Daily at 6:00 AM UTC
+backup_retention_days           = 14                  # Keep backups for 14 days
+backup_cold_storage_after       = 0                   # Disable cold storage
+enable_backup_cross_region_copy = false               # No cross-region copy for staging
+
 tags = {
   Project     = "pipeops"
   Environment = "staging"

@@ -52,12 +52,27 @@ dr_min_capacity                         = 2
 dr_max_capacity                         = 6                         # Can scale up during DR activation
 dr_node_instance_types                  = ["t3.medium", "t3.large"] # Cost-optimized for standby
 
+# ECR Repositories
+ecr_repository_names = [
+  "titanic-api"
+
+]
+ecr_enable_replication  = true          # ✅ Enable DR replication for prod
+ecr_replication_regions = ["us-east-1"] # Replicate to DR region
+
 # Feature Flags
 enable_argocd     = true
 enable_monitoring = true
 enable_logging    = true
 
 # Tags
+# AWS Backup Configuration
+enable_eks_backup               = true
+backup_schedule                 = "cron(0 6 * * ? *)" # Daily at 6:00 AM UTC
+backup_retention_days           = 35                  # Keep daily backups for 35 days
+backup_cold_storage_after       = 0                   # Disable cold storage (set to 7+ to enable)
+enable_backup_cross_region_copy = true                # Copy backups to DR region
+
 tags = {
   Project     = "pipeops"
   Environment = "prod"

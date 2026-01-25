@@ -115,18 +115,17 @@ output "rds_dr_note" {
 # ArgoCD Outputs (conditional on cluster_exists)
 output "argocd_namespace" {
   description = "ArgoCD namespace"
-  value       = var.cluster_exists && var.enable_argocd ? module.argocd[0].argocd_namespace : null
+  value       = var.cluster_exists && var.enable_argocd ? "argocd" : null
 }
 
 output "argocd_server_url" {
-  description = "ArgoCD server URL"
-  value       = var.cluster_exists && var.enable_argocd ? module.argocd[0].argocd_server_url : null
+  description = "ArgoCD server URL (use port-forward or ingress)"
+  value       = var.cluster_exists && var.enable_argocd ? (var.argocd_enable_ingress ? "https://${var.argocd_domain}" : "http://localhost:8080 (via port-forward)") : null
 }
 
-output "argocd_admin_password" {
-  description = "ArgoCD admin password"
-  value       = var.cluster_exists && var.enable_argocd ? module.argocd[0].argocd_admin_password : null
-  sensitive   = true
+output "argocd_admin_password_command" {
+  description = "Command to get ArgoCD initial admin password"
+  value       = var.cluster_exists && var.enable_argocd ? "kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath=\"{.data.password}\" | base64 -d" : null
 }
 
 # Monitoring Outputs (conditional on cluster_exists)
@@ -162,8 +161,7 @@ output "kubectl_config_command" {
 # ArgoCD CLI login command
 output "argocd_login_command" {
   description = "Command to login to ArgoCD CLI"
-  value       = "kubectl port-forward svc/argocd-server -n argocd 8080:443 & argocd login localhost:8080 --username admin --password '${local.argocd_admin_password}' --insecure"
-  sensitive   = true
+  value       = "kubectl port-forward svc/argocd-server -n argocd 8080:443 & argocd login localhost:8080 --username admin --insecure"
 }
 
 # Quick start commands
@@ -171,9 +169,9 @@ output "quick_start_commands" {
   description = "Quick start commands after deployment"
   value = {
     "1_configure_kubectl"      = "aws eks update-kubeconfig --region ${var.region} --name ${module.eks.cluster_name}"
-    "2_port_forward_argocd"    = "kubectl port-forward svc/argocd-server -n argocd 8080:80"
-    "3_argocd_admin_password"  = "echo '${local.argocd_admin_password}'"
-    "4_port_forward_grafana"   = var.enable_monitoring ? "kubectl port-forward svc/grafana -n monitoring 3000:80" : "Monitoring not enabled"
+    "2_port_forward_argocd"    = "kubectl port-forward svc/argocd-server -n argocd 8080:443"
+    "3_argocd_admin_password"  = "kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d"
+    "4_port_forward_grafana"   = var.enable_monitoring ? "kubectl port-forward svc/prometheus-grafana -n monitoring 3000:80" : "Monitoring not enabled"
     "5_grafana_admin_password" = var.enable_monitoring ? "echo '${local.grafana_admin_password}'" : "Monitoring not enabled"
   }
   sensitive = true
@@ -191,4 +189,59 @@ output "cost_optimization_notes" {
     "load_balancers"  = "Use Application Load Balancers efficiently with multiple services"
     "dr_cluster"      = var.environment == "prod" ? "DR cluster is in standby mode with minimal nodes for cost optimization" : "DR cluster disabled for non-production"
   }
+}
+
+# ECR Outputs
+output "ecr_repository_urls" {
+  description = "Map of ECR repository names to their URLs"
+  value       = module.ecr.repository_urls
+}
+
+output "ecr_registry_url" {
+  description = "ECR registry URL for Docker login"
+  value       = module.ecr.registry_url
+}
+
+output "ecr_docker_login_command" {
+  description = "Command to authenticate Docker with ECR"
+  value       = module.ecr.docker_login_command
+}
+
+output "ecr_replication_enabled" {
+  description = "Whether ECR cross-region replication is enabled"
+  value       = module.ecr.replication_enabled
+}
+
+output "ecr_replication_regions" {
+  description = "Regions where ECR images are replicated"
+  value       = module.ecr.replication_regions
+}
+
+# ====================================================================
+# AWS Backup Outputs
+# ====================================================================
+
+output "backup_vault_arn" {
+  description = "ARN of the AWS Backup vault for EKS"
+  value       = var.cluster_exists && var.enable_eks_backup ? aws_backup_vault.eks[0].arn : null
+}
+
+output "backup_vault_name" {
+  description = "Name of the AWS Backup vault for EKS"
+  value       = var.cluster_exists && var.enable_eks_backup ? aws_backup_vault.eks[0].name : null
+}
+
+output "backup_plan_id" {
+  description = "ID of the AWS Backup plan"
+  value       = var.cluster_exists && var.enable_eks_backup ? aws_backup_plan.eks_daily[0].id : null
+}
+
+output "backup_schedule" {
+  description = "Backup schedule (cron expression)"
+  value       = var.backup_schedule
+}
+
+output "backup_dr_vault_arn" {
+  description = "ARN of the DR backup vault (if cross-region copy enabled)"
+  value       = var.cluster_exists && var.enable_eks_backup && var.enable_backup_cross_region_copy ? aws_backup_vault.eks_dr[0].arn : null
 }

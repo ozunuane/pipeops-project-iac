@@ -1,0 +1,64 @@
+data:
+  # Default policy - readonly for all users
+  policy.default: role:readonly
+  # RBAC Policy Configuration
+  policy.csv: |-
+    # Admin role permissions - Full access to everything
+    p, role:admin, applications, *, */*, allow
+    p, role:admin, clusters, *, *, allow
+    p, role:admin, repositories, *, *, allow
+    p, role:admin, certificates, *, *, allow
+    p, role:admin, projects, *, *, allow
+    p, role:admin, accounts, *, *, allow
+    p, role:admin, gpgkeys, *, *, allow
+
+    # Senior Developer role permissions
+    p, role:senior-developer, applications, *, */*, allow
+    p, role:senior-developer, repositories, *, *, allow
+    p, role:senior-developer, projects, *, *, allow
+    p, role:senior-developer, certificates, *, *, allow
+    p, role:senior-developer, clusters, *, *, allow
+    p, role:senior-developer, accounts, *, *, allow
+
+    # Developer role permissions
+    p, role:developer, applications, *, */*, allow
+    p, role:developer, repositories, *, *, allow
+    p, role:developer, projects, *, *, allow
+    p, role:developer, certificates, *, *, allow
+    p, role:developer, clusters, *, *, allow
+
+    # DevOps role permissions
+    p, role:devops, applications, *, */*, allow
+    p, role:devops, clusters, *, *, allow
+    p, role:devops, repositories, *, *, allow
+    p, role:devops, certificates, *, *, allow
+    p, role:devops, projects, *, *, allow
+    p, role:devops, accounts, *, *, allow
+
+    # QA role permissions
+    p, role:qa, applications, get, */*, allow
+    p, role:qa, applications, sync, */*, allow
+    p, role:qa, applications, action/*, */*, allow
+    p, role:qa, repositories, get, *, allow
+    p, role:qa, projects, get, *, allow
+    p, role:qa, clusters, get, *, allow
+
+    # Intern role permissions
+    p, role:intern, applications, get, */*, allow
+    p, role:intern, applications, sync, */*, allow
+    p, role:intern, applications, action/*, */*, allow
+    p, role:intern, repositories, get, *, allow
+    p, role:intern, projects, get, *, allow
+    p, role:intern, clusters, get, *, allow
+
+    # Grant roles to groups (Google Groups)
+    g, argocd-admins, role:admin
+    g, afl-devops-team, role:devops
+    g, engineering, role:developer
+    g, afl-senior-developers, role:senior-developer
+    g, afl-qa-team, role:qa
+    g, afl-interns, role:intern
+
+    # Grant roles to specific users
+    g, godspower.u@9japay.com, role:admin
+    g, chinedu.u@9japay.com, role:admin

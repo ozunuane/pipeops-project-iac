@@ -49,6 +49,19 @@ dr_min_capacity                         = 2
 dr_max_capacity                         = 6              # Can scale during DR activation
 dr_node_instance_types                  = ["t3.medium", "t3.large"]  # Cost-optimized
 
+# ECR Repositories
+ecr_repository_names = [
+  "api",
+  "frontend",
+  "backend",
+  "worker"
+]
+ecr_scan_on_push                   = true   # Scan images for vulnerabilities
+ecr_lifecycle_keep_count           = 30     # Keep last 30 images
+ecr_lifecycle_expire_untagged_days = 14     # Expire untagged images after 14 days
+ecr_enable_replication             = true   # Enable cross-region replication (prod only)
+ecr_replication_regions            = ["us-east-1"]  # DR region
+
 # Feature Flags
 enable_argocd     = true
 enable_monitoring = true

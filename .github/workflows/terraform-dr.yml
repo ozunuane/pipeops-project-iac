@@ -1,17 +1,25 @@
 name: Terraform DR Infrastructure
 
 on:
+  # Plan on push to main and develop
   push:
     branches:
       - main
+      - develop
     paths:
       - 'dr-infrastructure/**'
       - '.github/workflows/terraform-dr.yml'
+  
+  # Plan on PRs to main and develop
   pull_request:
     branches:
       - main
+      - develop
     paths:
       - 'dr-infrastructure/**'
+      - '.github/workflows/terraform-dr.yml'
+  
+  # Manual trigger for apply/destroy (ONLY way to apply)
   workflow_dispatch:
     inputs:
       action:
@@ -22,25 +30,44 @@ on:
           - plan
           - apply
           - destroy
+      confirm_apply:
+        description: 'Type "yes" to confirm apply/destroy'
+        required: false
+        type: string
 
 env:
+  # ====================================================================
+  # Configuration - Update these for your project
+  # ====================================================================
+  PROJECT_NAME: pipeops
   TF_VERSION: '1.5.0'
+  
+  # Region Configuration
   DR_REGION: us-east-1
   PRIMARY_REGION: us-west-2
-  PROJECT_NAME: pipeops  # Change this for other projects
+  
+  # Environment
+  ENVIRONMENT: drprod
+  
+  # Backend Configuration (S3 + DynamoDB)
+  BACKEND_BUCKET: pipeops-drprod-terraform-state
+  BACKEND_KEY: dr-infrastructure/terraform.tfstate
+  BACKEND_DYNAMODB: pipeops-drprod-terraform-locks
 
 # Required permissions for OIDC authentication
 permissions:
-  id-token: write   # Required for requesting the JWT
-  contents: read    # Required for actions/checkout
+  id-token: write       # Required for requesting the JWT
+  contents: read        # Required for actions/checkout
+  pull-requests: write  # Required for PR comments
+  issues: write         # Required for issue comments
 
 jobs:
   terraform-dr:
     runs-on: ubuntu-latest
     
-    # DR only runs for production
+    # Require confirmation for apply/destroy
     environment:
-      name: prod-dr
+      name: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.action == 'apply' || github.event.inputs.action == 'destroy') && 'drprod' || '' }}
       url: ${{ steps.outputs.outputs.dr_eks_endpoint }}
     
     defaults:
@@ -51,12 +78,24 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (Primary Region)
+      # Validate confirmation for apply/destroy
+      - name: Validate confirmation
+        if: github.event_name == 'workflow_dispatch' && (github.event.inputs.action == 'apply' || github.event.inputs.action == 'destroy')
+        run: |
+          if [ "${{ github.event.inputs.confirm_apply }}" != "yes" ]; then
+            echo "❌ ERROR: You must type 'yes' in the confirm_apply field to proceed with ${{ github.event.inputs.action }}"
+            echo ""
+            echo "This is a safety check to prevent accidental DR infrastructure changes."
+            exit 1
+          fi
+          echo "✅ Confirmation validated for ${{ github.event.inputs.action }}"
+
+      - name: Configure AWS credentials (DR Region)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN_PROD }}
           role-session-name: github-actions-dr-${{ github.run_id }}
-          aws-region: ${{ env.PRIMARY_REGION }}
+          aws-region: ${{ env.DR_REGION }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -64,20 +103,14 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
-      - name: Set environment variables
+      - name: Set Terraform environment variables
         run: |
-          echo "ENVIRONMENT=prod" >> $GITHUB_ENV
-          echo "TF_VAR_environment=prod" >> $GITHUB_ENV
-          echo "PROJECT_NAME=${{ env.PROJECT_NAME }}" >> $GITHUB_ENV
-          echo "BACKEND_BUCKET=${{ env.PROJECT_NAME }}-prod-dr-terraform-state" >> $GITHUB_ENV
-          echo "BACKEND_KEY=dr/terraform.tfstate" >> $GITHUB_ENV
-          echo "BACKEND_DYNAMODB=${{ env.PROJECT_NAME }}-prod-dr-terraform-locks" >> $GITHUB_ENV
-          echo "BACKEND_REGION=${{ env.DR_REGION }}" >> $GITHUB_ENV
+          echo "TF_VAR_environment=${{ env.ENVIRONMENT }}" >> $GITHUB_ENV
 
       - name: Check if backend exists
         id: check-backend
         run: |
-          if aws s3 ls s3://${BACKEND_BUCKET} --region ${DR_REGION} 2>&1 | grep -q 'NoSuchBucket'; then
+          if aws s3 ls s3://${{ env.BACKEND_BUCKET }} --region ${{ env.DR_REGION }} 2>&1 | grep -q 'NoSuchBucket'; then
             echo "backend_exists=false" >> $GITHUB_OUTPUT
           else
             echo "backend_exists=true" >> $GITHUB_OUTPUT
@@ -87,38 +120,18 @@ jobs:
         if: steps.check-backend.outputs.backend_exists == 'false'
         run: |
           chmod +x scripts/setup-dr-prerequisites.sh
-          ./scripts/setup-dr-prerequisites.sh
+          ./scripts/setup-dr-prerequisites.sh drprod ${{ env.DR_REGION }}
 
-      - name: Get primary RDS ARN
-        id: primary-rds
-        run: |
-          # Query primary infrastructure state to get RDS ARN
-          cd ..
-          terraform init \
-            -backend-config="bucket=${{ env.PROJECT_NAME }}-prod-terraform-state" \
-            -backend-config="key=prod/terraform.tfstate" \
-            -backend-config="region=${PRIMARY_REGION}" \
-            -backend-config="dynamodb_table=${{ env.PROJECT_NAME }}-prod-terraform-locks" \
-            -backend-config="encrypt=true"
-          
-          RDS_ARN=$(terraform output -raw rds_arn 2>/dev/null || echo "")
-          
-          if [ -z "$RDS_ARN" ]; then
-            echo "⚠️ Warning: Primary RDS ARN not found. DR replica creation may fail."
-            echo "rds_arn=arn:aws:rds:${PRIMARY_REGION}:ACCOUNT_ID:db:${{ env.PROJECT_NAME }}-prod-postgres" >> $GITHUB_OUTPUT
-          else
-            echo "rds_arn=${RDS_ARN}" >> $GITHUB_OUTPUT
-          fi
-          
-          cd dr-infrastructure
+      # Primary RDS ARN is now fetched via terraform_remote_state in data.tf
+      # No need to manually query the primary state here
 
       - name: Terraform Init
         run: |
           terraform init \
-            -backend-config="bucket=${BACKEND_BUCKET}" \
-            -backend-config="key=${BACKEND_KEY}" \
-            -backend-config="region=${BACKEND_REGION}" \
-            -backend-config="dynamodb_table=${BACKEND_DYNAMODB}" \
+            -backend-config="bucket=${{ env.BACKEND_BUCKET }}" \
+            -backend-config="key=${{ env.BACKEND_KEY }}" \
+            -backend-config="region=${{ env.DR_REGION }}" \
+            -backend-config="dynamodb_table=${{ env.BACKEND_DYNAMODB }}" \
             -backend-config="encrypt=true"
 
       - name: Terraform Validate
@@ -131,12 +144,9 @@ jobs:
       - name: Terraform Plan
         id: plan
         run: |
-          # Update terraform.tfvars with actual RDS ARN
-          sed -i.bak "s|primary_rds_arn.*|primary_rds_arn = \"${{ steps.primary-rds.outputs.rds_arn }}\"|" \
-            environments/prod/terraform.tfvars
-          
+          # Primary RDS ARN is fetched via terraform_remote_state data source
           terraform plan \
-            -var-file="environments/prod/terraform.tfvars" \
+            -var-file="environments/drprod/terraform.tfvars" \
             -out=tfplan-dr \
             -no-color | tee plan-output.txt
           
@@ -145,7 +155,7 @@ jobs:
       - name: Upload plan artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tfplan-dr
+          name: tfplan-dr-${{ github.run_number }}
           path: |
             dr-infrastructure/tfplan-dr
             dr-infrastructure/plan-output.txt
@@ -172,7 +182,9 @@ jobs:
             **Components:**
             - DR VPC (us-east-1)
             - DR EKS Cluster (standby mode)
-            - DR RDS Read Replica (cross-region)
+            - DR RDS Read Replica (cross-region from prod)
+            
+            > ⚠️ **Note:** To apply this plan, use **workflow_dispatch** with action \`apply\`
             
             *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
             
@@ -183,24 +195,49 @@ jobs:
               body: output
             });
 
-      - name: Terraform Apply
-        if: |
-          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-          (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
+      - name: Plan Summary (Push)
+        if: github.event_name == 'push'
         run: |
+          echo "## 📋 DR Infrastructure Plan" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Trigger:** Push to ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### ⚠️ Plan Only - No Auto-Apply" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "To apply changes to DR infrastructure:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Go to **Actions** → **Terraform DR Infrastructure**" >> $GITHUB_STEP_SUMMARY
+          echo "2. Click **Run workflow**" >> $GITHUB_STEP_SUMMARY
+          echo "3. Select action: \`apply\`" >> $GITHUB_STEP_SUMMARY
+          echo "4. Type \`yes\` to confirm" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Plan Output" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          head -100 plan-output.txt >> $GITHUB_STEP_SUMMARY || true
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+      # ====================================================================
+      # APPLY - Only via workflow_dispatch
+      # ====================================================================
+      - name: Terraform Apply
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply'
+        run: |
+          echo "🚀 Applying DR infrastructure..."
           terraform apply -auto-approve tfplan-dr
 
+      # ====================================================================
+      # DESTROY - Only via workflow_dispatch
+      # ====================================================================
       - name: Terraform Destroy
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
         run: |
+          echo "⚠️ DESTROYING DR infrastructure..."
           terraform destroy \
-            -var-file="environments/prod/terraform.tfvars" \
+            -var-file="environments/drprod/terraform.tfvars" \
             -auto-approve
 
       - name: Capture outputs
-        if: |
-          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-          (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply'
         id: outputs
         run: |
           echo "dr_eks_endpoint=$(terraform output -raw dr_eks_cluster_endpoint 2>/dev/null || echo 'N/A')" >> $GITHUB_OUTPUT
@@ -210,23 +247,19 @@ jobs:
           terraform output -json > outputs-dr.json
 
       - name: Upload outputs
-        if: |
-          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-          (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply'
         uses: actions/upload-artifact@v4
         with:
-          name: outputs-dr
+          name: outputs-dr-${{ github.run_number }}
           path: dr-infrastructure/outputs-dr.json
           retention-days: 30
 
       - name: DR Deployment Summary
-        if: |
-          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-          (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply'
         run: |
-          echo "## DR Infrastructure Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "## ✅ DR Infrastructure Deployed" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### ✅ Deployed Components" >> $GITHUB_STEP_SUMMARY
+          echo "### Deployed Components" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Component | Region | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-----------|--------|--------|" >> $GITHUB_STEP_SUMMARY
@@ -238,9 +271,19 @@ jobs:
           echo "- **EKS Endpoint:** \`${{ steps.outputs.outputs.dr_eks_endpoint }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **RDS Endpoint:** \`${{ steps.outputs.outputs.dr_rds_endpoint }}\`" >> $GITHUB_STEP_SUMMARY
 
+      - name: Destroy Summary
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
+        run: |
+          echo "## ⚠️ DR Infrastructure Destroyed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All DR resources in us-east-1 have been destroyed." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Destroyed by:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Time:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_STEP_SUMMARY
+
       - name: Notify on failure
         if: failure()
         uses: actions/github-script@v7
         with:
           script: |
-            core.setFailed('DR infrastructure deployment failed');
+            core.setFailed('DR infrastructure workflow failed');

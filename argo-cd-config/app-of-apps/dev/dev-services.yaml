@@ -1,0 +1,31 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cbaas-services-app-of-apps
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: cbaas-services-app-of-apps
+    app.kubernetes.io/part-of: cbaas-services
+    app.kubernetes.io/component: app-of-apps
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: afl-cbaas-services
+  source:
+    repoURL: git@github.com:Africa-FinTech-Ltd/afl-devops-argocd.git
+    targetRevision: develop
+    path: applications/dev
+    directory:
+      recurse: true
+      include: '*.yaml'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
