@@ -178,8 +178,6 @@ resource "aws_ecr_lifecycle_policy" "main" {
 # Cross-Region Replication (DR)
 #------------------------------------------------------------------------------
 
-data "aws_caller_identity" "current" {}
-
 # Replication configuration (applied at registry level)
 resource "aws_ecr_replication_configuration" "main" {
   count = var.enable_replication && length(var.replication_regions) > 0 ? 1 : 0
