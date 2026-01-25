@@ -62,6 +62,10 @@ resource "aws_eks_cluster" "main" {
     aws_iam_role_policy_attachment.node_AmazonEKSWorkerNodePolicy,
     aws_iam_role_policy_attachment.node_AmazonEKS_CNI_Policy,
     aws_iam_role_policy_attachment.node_AmazonEC2ContainerRegistryReadOnly,
+    aws_iam_role_policy_attachment.node_AmazonEBSCSIDriverPolicy,
+    # Service-linked roles required for Auto Mode
+    aws_iam_service_linked_role.eks_nodepool,
+    aws_iam_service_linked_role.eks_compute,
   ]
 
   tags = var.tags
@@ -125,6 +129,7 @@ resource "aws_iam_role_policy" "cluster_auto_mode" {
       {
         Effect = "Allow"
         Action = [
+          # Network interface management
           "ec2:CreateNetworkInterface",
           "ec2:DeleteNetworkInterface",
           "ec2:AttachNetworkInterface",
@@ -135,10 +140,40 @@ resource "aws_iam_role_policy" "cluster_auto_mode" {
           "ec2:DescribeVpcs",
           "ec2:DescribeRouteTables",
           "ec2:DescribeSecurityGroups",
+          # Auto Scaling permissions
           "autoscaling:*",
-          "application-autoscaling:*"
+          "application-autoscaling:*",
+          # EKS Auto Mode specific permissions
+          "eks:CreateNodepool",
+          "eks:DeleteNodepool",
+          "eks:DescribeNodepool",
+          "eks:ListNodepools",
+          "eks:UpdateNodepool",
+          "eks:TagResource",
+          "eks:UntagResource",
+          # Additional EC2 permissions for Auto Mode
+          "ec2:CreateTags",
+          "ec2:DescribeInstances",
+          "ec2:DescribeInstanceTypes",
+          "ec2:DescribeLaunchTemplates",
+          "ec2:DescribeLaunchTemplateVersions",
+          "ec2:RunInstances",
+          "ec2:TerminateInstances",
+          # IAM permissions for service-linked roles
+          "iam:CreateServiceLinkedRole",
+          "iam:PassRole"
         ]
         Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "iam:PassRole"
+        ]
+        Resource = [
+          "arn:aws:iam::*:role/aws-service-role/eks-nodepool.amazonaws.com/AWSServiceRoleForAmazonEKSNodepool",
+          "arn:aws:iam::*:role/aws-service-role/compute.eks.amazonaws.com/AWSServiceRoleForAmazonEKSComputeManagement"
+        ]
       }
     ]
   })
@@ -283,7 +318,13 @@ resource "aws_iam_role_policy_attachment" "node_AmazonEC2ContainerRegistryReadOn
   role       = aws_iam_role.node.name
 }
 
-# Additional IAM policy for Auto Scaling and CloudWatch
+# EBS CSI Driver policy (required for Auto Mode with persistent volumes)
+resource "aws_iam_role_policy_attachment" "node_AmazonEBSCSIDriverPolicy" {
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+  role       = aws_iam_role.node.name
+}
+
+# Additional IAM policy for Auto Scaling, CloudWatch, and EBS CSI
 resource "aws_iam_role_policy" "node_auto_scaling" {
   name = "${var.cluster_name}-node-auto-scaling"
   role = aws_iam_role.node.id
@@ -294,6 +335,7 @@ resource "aws_iam_role_policy" "node_auto_scaling" {
       {
         Effect = "Allow"
         Action = [
+          # Auto Scaling permissions
           "autoscaling:DescribeAutoScalingGroups",
           "autoscaling:DescribeAutoScalingInstances",
           "autoscaling:DescribeLaunchConfigurations",
@@ -301,9 +343,33 @@ resource "aws_iam_role_policy" "node_auto_scaling" {
           "autoscaling:SetDesiredCapacity",
           "autoscaling:TerminateInstanceInAutoScalingGroup",
           "ec2:DescribeLaunchTemplateVersions",
+          # CloudWatch permissions
           "cloudwatch:PutMetricData",
+          # EBS CSI driver permissions (required for Auto Mode)
+          "ec2:AttachVolume",
+          "ec2:CreateSnapshot",
+          "ec2:CreateTags",
+          "ec2:CreateVolume",
+          "ec2:DeleteSnapshot",
+          "ec2:DeleteTags",
+          "ec2:DeleteVolume",
+          "ec2:DescribeAvailabilityZones",
+          "ec2:DescribeInstances",
+          "ec2:DescribeSnapshots",
+          "ec2:DescribeTags",
           "ec2:DescribeVolumes",
-          "ec2:DescribeSnapshots"
+          "ec2:DescribeVolumesModifications",
+          "ec2:DetachVolume",
+          "ec2:ModifyVolume",
+          # VPC CNI advanced permissions for Auto Mode
+          "ec2:AssignPrivateIpAddresses",
+          "ec2:CreateNetworkInterface",
+          "ec2:DeleteNetworkInterface",
+          "ec2:DescribeNetworkInterfaces",
+          "ec2:DescribeSubnets",
+          "ec2:DescribeVpcs",
+          "ec2:ModifyNetworkInterfaceAttribute",
+          "ec2:UnassignPrivateIpAddresses"
         ]
         Resource = "*"
       }
@@ -324,4 +390,26 @@ resource "aws_iam_openid_connect_provider" "cluster" {
   tags = merge(var.tags, {
     Name = "${var.cluster_name}-eks-irsa"
   })
+}
+
+# Service-Linked Roles for EKS Auto Mode
+# These roles are automatically created by AWS when needed, but we ensure they exist
+resource "aws_iam_service_linked_role" "eks_nodepool" {
+  aws_service_name = "eks-nodepool.amazonaws.com"
+  description      = "Service-linked role for EKS Auto Mode node pools"
+
+  # Only create if it doesn't already exist
+  lifecycle {
+    ignore_changes = all
+  }
+}
+
+resource "aws_iam_service_linked_role" "eks_compute" {
+  aws_service_name = "compute.eks.amazonaws.com"
+  description      = "Service-linked role for EKS Auto Mode compute management"
+
+  # Only create if it doesn't already exist
+  lifecycle {
+    ignore_changes = all
+  }
 }
