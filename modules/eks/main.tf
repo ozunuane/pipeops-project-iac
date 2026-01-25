@@ -159,6 +159,7 @@ resource "aws_iam_role_policy" "cluster_auto_mode" {
     Version = "2012-10-17"
     Statement = [
       {
+        Sid    = "EC2NetworkingPermissions"
         Effect = "Allow"
         Action = [
           "ec2:CreateNetworkInterface",
@@ -175,6 +176,25 @@ resource "aws_iam_role_policy" "cluster_auto_mode" {
           "application-autoscaling:*"
         ]
         Resource = "*"
+      },
+      {
+        # FIX: AmazonEKSComputePolicy only allows iam:AddRoleToInstanceProfile for "eks-compute-*"
+        # but EKS Auto Mode creates instance profiles named "eks-<region>-<cluster>-*"
+        # This policy fills that gap
+        Sid    = "EKSAutoModeInstanceProfileManagement"
+        Effect = "Allow"
+        Action = [
+          "iam:CreateInstanceProfile",
+          "iam:DeleteInstanceProfile",
+          "iam:GetInstanceProfile",
+          "iam:AddRoleToInstanceProfile",
+          "iam:RemoveRoleFromInstanceProfile",
+          "iam:TagInstanceProfile"
+        ]
+        Resource = [
+          "arn:aws:iam::*:instance-profile/eks-*",
+          "arn:aws:iam::*:instance-profile/${var.cluster_name}-*"
+        ]
       }
     ]
   })
