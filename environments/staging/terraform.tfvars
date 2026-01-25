@@ -51,6 +51,13 @@ enable_monitoring = true
 enable_logging    = true
 
 # Tags
+# AWS Backup Configuration
+enable_eks_backup               = true
+backup_schedule                 = "cron(0 6 * * ? *)" # Daily at 6:00 AM UTC
+backup_retention_days           = 14                  # Keep backups for 14 days
+backup_cold_storage_after       = 0                   # Disable cold storage
+enable_backup_cross_region_copy = false               # No cross-region copy for staging
+
 tags = {
   Project     = "pipeops"
   Environment = "staging"

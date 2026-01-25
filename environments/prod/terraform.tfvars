@@ -66,6 +66,13 @@ enable_monitoring = true
 enable_logging    = true
 
 # Tags
+# AWS Backup Configuration
+enable_eks_backup               = true
+backup_schedule                 = "cron(0 6 * * ? *)" # Daily at 6:00 AM UTC
+backup_retention_days           = 35                  # Keep daily backups for 35 days
+backup_cold_storage_after       = 0                   # Disable cold storage (set to 7+ to enable)
+enable_backup_cross_region_copy = true                # Copy backups to DR region
+
 tags = {
   Project     = "pipeops"
   Environment = "prod"

@@ -216,3 +216,32 @@ output "ecr_replication_regions" {
   description = "Regions where ECR images are replicated"
   value       = module.ecr.replication_regions
 }
+
+# ====================================================================
+# AWS Backup Outputs
+# ====================================================================
+
+output "backup_vault_arn" {
+  description = "ARN of the AWS Backup vault for EKS"
+  value       = var.cluster_exists && var.enable_eks_backup ? aws_backup_vault.eks[0].arn : null
+}
+
+output "backup_vault_name" {
+  description = "Name of the AWS Backup vault for EKS"
+  value       = var.cluster_exists && var.enable_eks_backup ? aws_backup_vault.eks[0].name : null
+}
+
+output "backup_plan_id" {
+  description = "ID of the AWS Backup plan"
+  value       = var.cluster_exists && var.enable_eks_backup ? aws_backup_plan.eks_daily[0].id : null
+}
+
+output "backup_schedule" {
+  description = "Backup schedule (cron expression)"
+  value       = var.backup_schedule
+}
+
+output "backup_dr_vault_arn" {
+  description = "ARN of the DR backup vault (if cross-region copy enabled)"
+  value       = var.cluster_exists && var.enable_eks_backup && var.enable_backup_cross_region_copy ? aws_backup_vault.eks_dr[0].arn : null
+}

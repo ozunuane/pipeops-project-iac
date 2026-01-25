@@ -50,6 +50,13 @@ enable_monitoring = false # Disable monitoring in dev to save costs
 enable_logging    = false # Disable logging in dev
 
 # Tags
+# AWS Backup Configuration (minimal for dev)
+enable_eks_backup               = true
+backup_schedule                 = "cron(0 6 * * ? *)" # Daily at 6:00 AM UTC
+backup_retention_days           = 7                   # Keep backups for 7 days only
+backup_cold_storage_after       = 0                   # Disable cold storage
+enable_backup_cross_region_copy = false               # No cross-region copy for dev
+
 tags = {
   Project      = "pipeops"
   Environment  = "dev"

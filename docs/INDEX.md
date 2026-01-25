@@ -48,6 +48,22 @@ Contents:
 
 ---
 
+#### **[AWS Backup Guide](./AWS_BACKUP_GUIDE.md)** 🆕
+EKS cluster backup and restore procedures
+
+Contents:
+- Backup architecture (primary + DR region)
+- Configuration options (schedule, retention, cross-region)
+- Environment-specific settings
+- Restore procedures (console & CLI)
+- Monitoring and alerting
+- Cost considerations
+- Troubleshooting
+
+**Use this for:** EKS backup configuration and disaster recovery
+
+---
+
 ### Configuration Files
 
 #### Terraform Configuration
@@ -69,6 +85,12 @@ Contents:
 - `modules/rds/` - RDS database module (with HA/DR)
 - `modules/argocd/` - ArgoCD GitOps module
 - `modules/monitoring/` - Prometheus/Grafana module
+- `modules/ecr/` - ECR container registry module
+
+#### Standalone Terraform Files
+- `backup.tf` - AWS Backup for EKS (daily 6 AM + weekly backups)
+- `ecr.tf` - ECR repository configuration
+- `argocd.tf` - ArgoCD Helm installation
 
 ---
 
@@ -107,6 +129,12 @@ Contents:
 
 ### Troubleshooting
 ➡️ Go to: [RDS Complete Guide - Troubleshooting Section](../RDS_COMPLETE_GUIDE.md#troubleshooting)
+
+### Configuring EKS Backups
+➡️ Go to: [AWS Backup Guide - Configuration](./AWS_BACKUP_GUIDE.md#configuration)
+
+### Restore EKS from Backup
+➡️ Go to: [AWS Backup Guide - Restore Procedures](./AWS_BACKUP_GUIDE.md#restore-procedures)
 
 ---
 

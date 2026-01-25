@@ -381,3 +381,37 @@ variable "tags" {
     GitOps      = "argocd"
   }
 }
+
+# ====================================================================
+# AWS Backup Configuration
+# ====================================================================
+
+variable "enable_eks_backup" {
+  description = "Enable AWS Backup for EKS cluster"
+  type        = bool
+  default     = true
+}
+
+variable "backup_schedule" {
+  description = "Cron expression for backup schedule (default: daily at 6 AM UTC)"
+  type        = string
+  default     = "cron(0 6 * * ? *)"
+}
+
+variable "backup_retention_days" {
+  description = "Number of days to retain backups before deletion"
+  type        = number
+  default     = 35
+}
+
+variable "backup_cold_storage_after" {
+  description = "Number of days after which to move backups to cold storage (set to 0 to disable)"
+  type        = number
+  default     = 0
+}
+
+variable "enable_backup_cross_region_copy" {
+  description = "Enable cross-region backup copy to DR region"
+  type        = bool
+  default     = false
+}
