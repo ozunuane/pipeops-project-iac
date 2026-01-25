@@ -221,6 +221,25 @@ resource "aws_iam_role_policy" "cluster_auto_mode" {
           "arn:aws:iam::*:role/aws-service-role/eks-nodepool.amazonaws.com/AWSServiceRoleForAmazonEKSNodepool",
           "arn:aws:iam::*:role/aws-service-role/compute.eks.amazonaws.com/AWSServiceRoleForAmazonEKSComputeManagement"
         ]
+      },
+      {
+        # FIX: EKS Auto Mode creates instance profiles but needs permission to attach roles
+        # AmazonEKSComputePolicy only allows iam:AddRoleToInstanceProfile for "eks-compute-*"
+        # but EKS Auto Mode creates profiles named "eks-<region>-<cluster>-<hash>"
+        Sid    = "EKSAutoModeInstanceProfileManagement"
+        Effect = "Allow"
+        Action = [
+          "iam:CreateInstanceProfile",
+          "iam:DeleteInstanceProfile",
+          "iam:GetInstanceProfile",
+          "iam:AddRoleToInstanceProfile",
+          "iam:RemoveRoleFromInstanceProfile",
+          "iam:TagInstanceProfile"
+        ]
+        Resource = [
+          "arn:aws:iam::*:instance-profile/eks-*",
+          "arn:aws:iam::*:instance-profile/${var.cluster_name}-*"
+        ]
       }
     ]
   })
