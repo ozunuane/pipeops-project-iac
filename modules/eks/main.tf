@@ -76,8 +76,8 @@ resource "aws_eks_cluster" "main" {
   # Lifecycle rules for cluster replacement
   # - Destroy existing cluster before creating new one (not create_before_destroy)
   # - Replace if IAM roles change (ensures proper permissions on new cluster)
-  lifecycle {
-    create_before_destroy = false
+  # lifecycle {
+  #   create_before_destroy = false
 
     # # Force replacement if these critical resources change
     # replace_triggered_by = [
@@ -85,7 +85,7 @@ resource "aws_eks_cluster" "main" {
     #   aws_iam_role.node.arn,
     #   aws_iam_instance_profile.node.arn,
     # ]
-  }
+  # }
 }
 
 # KMS key for EKS encryption
