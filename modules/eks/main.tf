@@ -88,6 +88,7 @@ resource "aws_eks_cluster" "main" {
   # }
 }
 
+
 # KMS key for EKS encryption
 resource "aws_kms_key" "eks" {
   description             = "EKS Secret Encryption Key"
