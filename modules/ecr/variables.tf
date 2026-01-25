@@ -28,9 +28,9 @@ variable "repository_names" {
 }
 
 variable "image_tag_mutability" {
-  description = "Image tag mutability (MUTABLE or IMMUTABLE)"
+  description = "Image tag mutability (MUTABLE or IMMUTABLE). IMMUTABLE recommended for security."
   type        = string
-  default     = "MUTABLE"
+  default     = "IMMUTABLE"
 }
 
 variable "scan_on_push" {
@@ -39,14 +39,8 @@ variable "scan_on_push" {
   default     = true
 }
 
-variable "encryption_type" {
-  description = "Encryption type (AES256 or KMS)"
-  type        = string
-  default     = "AES256"
-}
-
 variable "kms_key_arn" {
-  description = "KMS key ARN (required if encryption_type is KMS)"
+  description = "KMS key ARN for ECR encryption. If not provided, a new KMS key will be created."
   type        = string
   default     = null
 }
