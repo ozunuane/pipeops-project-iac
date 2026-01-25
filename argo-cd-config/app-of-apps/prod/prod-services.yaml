@@ -1,0 +1,28 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cbaas-services-app-of-apps
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: cbaas-services-app-of-apps
+    app.kubernetes.io/part-of: cbaas-services
+spec:
+  project: afl-cbaas-services
+  source:
+    repoURL: https://github.com/ozunuane/pipeops-project-iac.git
+    targetRevision: main
+    path: argo-cd-config/app-of-apps/prod
+    directory:
+      recurse: true
+      include: '*.yaml'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true

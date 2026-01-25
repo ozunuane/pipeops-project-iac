@@ -144,3 +144,64 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+# ====================================================================
+# Multi-Cluster Management Configuration
+# ====================================================================
+
+variable "enable_multi_cluster" {
+  description = "Enable multi-cluster management from this ArgoCD instance"
+  type        = bool
+  default     = false
+}
+
+variable "managed_clusters" {
+  description = "List of external clusters to be managed by this ArgoCD instance"
+  type = list(object({
+    name        = string # Cluster name (e.g., 'dev', 'staging', 'dr')
+    environment = string # Environment label
+    server      = string # Kubernetes API server URL
+    ca_data     = string # Base64-encoded CA certificate
+    # Auth method: either bearer_token OR aws_auth
+    bearer_token = optional(string, "") # Service account bearer token
+    # AWS EKS specific auth (recommended for EKS clusters)
+    aws_auth = optional(object({
+      cluster_name = string               # EKS cluster name
+      role_arn     = optional(string, "") # IAM role ARN for cross-account access
+      region       = optional(string, "us-west-2")
+    }), null)
+    labels = optional(map(string), {}) # Additional labels for cluster selection
+  }))
+  default   = []
+  sensitive = true
+}
+
+variable "project_name" {
+  description = "Project name for ApplicationSet generators"
+  type        = string
+  default     = "pipeops"
+}
+
+variable "git_repo_url" {
+  description = "Git repository URL for ApplicationSets"
+  type        = string
+  default     = ""
+}
+
+variable "git_repo_path" {
+  description = "Path in git repo for application manifests"
+  type        = string
+  default     = "k8s-manifests"
+}
+
+variable "git_target_revision" {
+  description = "Git target revision (branch, tag, or commit)"
+  type        = string
+  default     = "HEAD"
+}
+
+variable "enable_applicationsets" {
+  description = "Enable sample ApplicationSets for multi-cluster deployments"
+  type        = bool
+  default     = false
+}

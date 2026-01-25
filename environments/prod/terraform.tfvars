@@ -52,6 +52,14 @@ dr_min_capacity                         = 2
 dr_max_capacity                         = 6                         # Can scale up during DR activation
 dr_node_instance_types                  = ["t3.medium", "t3.large"] # Cost-optimized for standby
 
+# ECR Repositories
+ecr_repository_names = [
+  "titanic-api"
+
+]
+ecr_enable_replication  = true          # ✅ Enable DR replication for prod
+ecr_replication_regions = ["us-east-1"] # Replicate to DR region
+
 # Feature Flags
 enable_argocd     = true
 enable_monitoring = true

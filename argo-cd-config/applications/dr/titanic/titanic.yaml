@@ -1,0 +1,41 @@
+# ==============================================================================
+# CBAAS API Gateway  Services Applications
+# ==============================================================================
+# These applications are managed by ArgoCD running in 'argocd' namespace
+# but they deploy the actual services to the 'cbaas' namespace
+
+# CBAAS API Gateway Service Application
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  annotations:
+  name: afl-cbaas-apigateway
+  namespace: argocd # ArgoCD namespace
+  labels:
+    app.kubernetes.io/name: afl-cbaas-apigateway
+    app.kubernetes.io/part-of: afl-cbaas-services
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: afl-cbaas-services
+  source:
+    repoURL: git@github.com:Africa-FinTech-Ltd/afl.service.cbaas.apigateway.git  # Aoolication repository
+    targetRevision: develop
+    path: k8s
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: dev # Target deployment namespace
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

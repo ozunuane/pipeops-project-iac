@@ -37,6 +37,14 @@ db_dr_instance_class           = "db.r6g.large"
 db_dr_multi_az                 = false # Single-AZ in DR for staging
 db_enable_cross_region_backups = false # ❌ Disabled for cost savings
 
+# ECR Repositories
+ecr_repository_names = [
+  "titanic-api",
+  "frontend",
+  "backend"
+]
+ecr_enable_replication = false # No DR replication in staging
+
 # Feature Flags
 enable_argocd     = true
 enable_monitoring = true

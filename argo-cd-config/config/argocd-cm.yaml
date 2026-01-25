@@ -1,0 +1,42 @@
+data:
+  # ArgoCD Server URL
+  url: https://cbaas-deploy.dev.inafl.com
+  # Application instance label key
+  application.instanceLabelKey: argocd.argoproj.io/instance
+  # Server configuration
+  server.rbac.log.enforce.enable: "true"
+  # Git configuration
+  timeout.reconciliation: 180s
+  timeout.hard.reconciliation: 0s
+  # Resource customizations
+  resource.customizations.health.argoproj.io_Application: |
+    hs = {}
+    hs.status = "Progressing"
+    hs.message = ""
+    if obj.status ~= nil then
+      if obj.status.health ~= nil then
+        hs.status = obj.status.health.status
+        if obj.status.health.message ~= nil then
+          hs.message = obj.status.health.message
+        end
+      end
+    end
+    return hs
+  # Repository credentials template
+  repository.credentials: "- url: https://github.com/Africa-FinTech-Ltd\n  passwordSecret:\n    name: afl-github-repo\n    key: password\n  usernameSecret:\n    name: afl-github-repo\n    key: username\n    \n"
+  # Google SAML SSO Configuration
+  dex.config: |-
+    connectors:
+    - type: saml
+      id: google-saml
+      name: Google SAML
+      config:
+        ssoURL: https://accounts.google.com/o/saml2/idp?idpid=C04flq295
+        entityIssuer: https://cbaas-deploy.dev.inafl.com/api/dex/callback
+        insecureSkipSignatureValidation: true 
+        ca: |
+          LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tDQpNSUlEZERDQ0FseWdBd0lCQWdJR0FZQWZIOThQTUEwR0NTcUdTSWIzRFFFQkN3VUFNSHN4RkRBU0JnTlZCQW9UQzBkdmIyZHNaU0JKDQpibU11TVJZd0ZBWURWUVFIRXcxTmIzVnVkR0ZwYmlCV2FXVjNNUTh3RFFZRFZRUURFd1pIYjI5bmJHVXhHREFXQmdOVkJBc1REMGR2DQpiMmRzWlNCR2IzSWdWMjl5YXpFTE1Ba0dBMVVFQmhNQ1ZWTXhFekFSQmdOVkJBZ1RDa05oYkdsbWIzSnVhV0V3SGhjTk1qSXdOREV5DQpNVGcxTXpReldoY05NamN3TkRFeE1UZzFNelF6V2pCN01SUXdFZ1lEVlFRS0V3dEhiMjluYkdVZ1NXNWpMakVXTUJRR0ExVUVCeE1ODQpUVzkxYm5SaGFXNGdWbWxsZHpFUE1BMEdBMVVFQXhNR1IyOXZaMnhsTVJnd0ZnWURWUVFMRXc5SGIyOW5iR1VnUm05eUlGZHZjbXN4DQpDekFKQmdOVkJBWVRBbFZUTVJNd0VRWURWUVFJRXdwRFlXeHBabTl5Ym1saE1JSUJJakFOQmdrcWhraUc5dzBCQVFFRkFBT0NBUThBDQpNSUlCQ2dLQ0FRRUFwZ0QzMXlUT3dOMWZ4MWg2Vnk0MmR0NzFkME5xVWZva2NhUElKWG1XNDBKeThaMFdOZFpiTUVka0V2WmE4emcrDQo3aWkzZENqaEMzdnB0cFdBcjRhaWwyM1FPOWNWL3U1Rk91YUJGamZJb3Z3dTBScTlSMCtnMUpuaWxIcVZwVTFxMzdtNFduR2dpS0RTDQpMMjR1clpmSG5zcVRDaVVNSGl6dmpSQkpVb0N1TVl3TXJIYmxYamhSdDdEVGU3RXdMUnoxT0FsSyttMTMveDdaYXJqaUpqVFBFNXJTDQp2YVV6djdyaTFWUmkveXRJUVVoV3d6cVN5bFc5U09SMVJQdngvblhua2xGcHFsYk9raEgybHN4ZlZvTHNxdThiWUp4cVNISnUxVWhnDQpkNzZMbWtMaU1IWE1uNFpHMmtlUXM0VjRPcVJVc0R4S1RZVzNHYnZxeHZncThsQVR2UUlEQVFBQk1BMEdDU3FHU0liM0RRRUJDd1VBDQpBNElCQVFBZTlkczBDTTdGVmpLNlZBYUZWT3U1WTFCRXV4TEk5R1REMXBwZHMwQ3ZVL2ZQcnFUVE9lQmp3ajYrWTZKVXFHd09uVXRkDQp6U0NrZm41VGZkakdvb080bk1xTTdvRDVTbXBhNUI1c05VYngydnpCQmtqQ01pV1lhZDhUUjltS0tIdG9Nb3J0U1NoaWhsbmg3Tm5EDQprODhGczVXcVNRbnJYMEhrc0ZRelN1RVVvTFpsczRBc25mYXZ5a0w1bHhMd0ttT1EvNXFHUThRa25KRzRTaEVYUVd0aFFISnJPT2pEDQpvOTdUV3J4T0Zrem5wYmdWeXBEL0ZJSFRXcVYxL2lGalpoelBtU2t3a3BNY2NLRkxJVmhkL3diWTNxdGZUMjY3U2dFOGdqUUxVK1NlDQpaL2pLMDE3Z2hLY2lYRnc2ZHk2KzdtcVZkRzVHNkg0MHdUNzhxbGVJVUwwcA0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQ==
+        redirectURI: https://cbaas-deploy.dev.inafl.com/api/dex/callback
+        usernameAttr: name
+        emailAttr: email
+        ssoIssuer: https://accounts.google.com/o/saml2?idpid=C04flq295

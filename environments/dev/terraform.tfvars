@@ -37,6 +37,13 @@ db_dr_instance_class           = "db.t4g.medium"
 db_dr_multi_az                 = false
 db_enable_cross_region_backups = false # ❌ Disabled for dev
 
+# ECR Repositories
+ecr_repository_names = [
+  "titanic-api"
+
+]
+ecr_enable_replication = false # No DR replication in dev
+
 # Feature Flags
 enable_argocd     = true
 enable_monitoring = false # Disable monitoring in dev to save costs
