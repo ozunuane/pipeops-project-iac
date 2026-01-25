@@ -36,10 +36,23 @@ on:
         type: string
 
 env:
+  # ====================================================================
+  # Configuration - Update these for your project
+  # ====================================================================
+  PROJECT_NAME: pipeops
   TF_VERSION: '1.5.0'
+  
+  # Region Configuration
   DR_REGION: us-east-1
   PRIMARY_REGION: us-west-2
-  PROJECT_NAME: pipeops  # Change this for other projects
+  
+  # Environment
+  ENVIRONMENT: drprod
+  
+  # Backend Configuration (S3 + DynamoDB)
+  BACKEND_BUCKET: pipeops-drprod-terraform-state
+  BACKEND_KEY: dr-infrastructure/terraform.tfstate
+  BACKEND_DYNAMODB: pipeops-drprod-terraform-locks
 
 # Required permissions for OIDC authentication
 permissions:
@@ -54,7 +67,7 @@ jobs:
     
     # Require confirmation for apply/destroy
     environment:
-      name: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.action == 'apply' || github.event.inputs.action == 'destroy') && 'prod-dr' || '' }}
+      name: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.action == 'apply' || github.event.inputs.action == 'destroy') && 'drprod' || '' }}
       url: ${{ steps.outputs.outputs.dr_eks_endpoint }}
     
     defaults:
@@ -90,20 +103,14 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
-      - name: Set environment variables
+      - name: Set Terraform environment variables
         run: |
-          echo "ENVIRONMENT=prod" >> $GITHUB_ENV
-          echo "TF_VAR_environment=prod" >> $GITHUB_ENV
-          echo "PROJECT_NAME=${{ env.PROJECT_NAME }}" >> $GITHUB_ENV
-          echo "BACKEND_BUCKET=${{ env.PROJECT_NAME }}-prod-dr-terraform-state" >> $GITHUB_ENV
-          echo "BACKEND_KEY=dr/terraform.tfstate" >> $GITHUB_ENV
-          echo "BACKEND_DYNAMODB=${{ env.PROJECT_NAME }}-prod-dr-terraform-locks" >> $GITHUB_ENV
-          echo "BACKEND_REGION=${{ env.DR_REGION }}" >> $GITHUB_ENV
+          echo "TF_VAR_environment=${{ env.ENVIRONMENT }}" >> $GITHUB_ENV
 
       - name: Check if backend exists
         id: check-backend
         run: |
-          if aws s3 ls s3://${BACKEND_BUCKET} --region ${{ env.DR_REGION }} 2>&1 | grep -q 'NoSuchBucket'; then
+          if aws s3 ls s3://${{ env.BACKEND_BUCKET }} --region ${{ env.DR_REGION }} 2>&1 | grep -q 'NoSuchBucket'; then
             echo "backend_exists=false" >> $GITHUB_OUTPUT
           else
             echo "backend_exists=true" >> $GITHUB_OUTPUT
@@ -113,46 +120,18 @@ jobs:
         if: steps.check-backend.outputs.backend_exists == 'false'
         run: |
           chmod +x scripts/setup-dr-prerequisites.sh
-          ./scripts/setup-dr-prerequisites.sh
+          ./scripts/setup-dr-prerequisites.sh drprod ${{ env.DR_REGION }}
 
-      - name: Get primary RDS ARN
-        id: primary-rds
-        run: |
-          # Configure credentials for primary region to read state
-          # Query primary infrastructure state to get RDS ARN
-          cd ..
-          
-          # Check if primary state exists
-          if aws s3 ls s3://${{ env.PROJECT_NAME }}-prod-terraform-state/prod/terraform.tfstate --region ${PRIMARY_REGION} 2>/dev/null; then
-            terraform init \
-              -backend-config="bucket=${{ env.PROJECT_NAME }}-prod-terraform-state" \
-              -backend-config="key=prod/terraform.tfstate" \
-              -backend-config="region=${PRIMARY_REGION}" \
-              -backend-config="dynamodb_table=${{ env.PROJECT_NAME }}-prod-terraform-locks" \
-              -backend-config="encrypt=true"
-            
-            RDS_ARN=$(terraform output -raw rds_arn 2>/dev/null || echo "")
-          else
-            RDS_ARN=""
-          fi
-          
-          if [ -z "$RDS_ARN" ]; then
-            echo "⚠️ Warning: Primary RDS ARN not found. DR replica creation may fail."
-            echo "rds_arn=" >> $GITHUB_OUTPUT
-          else
-            echo "✅ Found primary RDS ARN: ${RDS_ARN}"
-            echo "rds_arn=${RDS_ARN}" >> $GITHUB_OUTPUT
-          fi
-          
-          cd dr-infrastructure
+      # Primary RDS ARN is now fetched via terraform_remote_state in data.tf
+      # No need to manually query the primary state here
 
       - name: Terraform Init
         run: |
           terraform init \
-            -backend-config="bucket=${BACKEND_BUCKET}" \
-            -backend-config="key=${BACKEND_KEY}" \
-            -backend-config="region=${BACKEND_REGION}" \
-            -backend-config="dynamodb_table=${BACKEND_DYNAMODB}" \
+            -backend-config="bucket=${{ env.BACKEND_BUCKET }}" \
+            -backend-config="key=${{ env.BACKEND_KEY }}" \
+            -backend-config="region=${{ env.DR_REGION }}" \
+            -backend-config="dynamodb_table=${{ env.BACKEND_DYNAMODB }}" \
             -backend-config="encrypt=true"
 
       - name: Terraform Validate
@@ -165,14 +144,9 @@ jobs:
       - name: Terraform Plan
         id: plan
         run: |
-          # Update terraform.tfvars with actual RDS ARN if available
-          if [ -n "${{ steps.primary-rds.outputs.rds_arn }}" ]; then
-            sed -i.bak "s|primary_rds_arn.*|primary_rds_arn = \"${{ steps.primary-rds.outputs.rds_arn }}\"|" \
-              environments/prod/terraform.tfvars
-          fi
-          
+          # Primary RDS ARN is fetched via terraform_remote_state data source
           terraform plan \
-            -var-file="environments/prod/terraform.tfvars" \
+            -var-file="environments/drprod/terraform.tfvars" \
             -out=tfplan-dr \
             -no-color | tee plan-output.txt
           
@@ -259,7 +233,7 @@ jobs:
         run: |
           echo "⚠️ DESTROYING DR infrastructure..."
           terraform destroy \
-            -var-file="environments/prod/terraform.tfvars" \
+            -var-file="environments/drprod/terraform.tfvars" \
             -auto-approve
 
       - name: Capture outputs
