@@ -230,6 +230,17 @@ jobs:
             -var-file="environments/${{ matrix.environment }}/terraform.tfvars" \
             -out=tfplan-${{ matrix.environment }} \
             -no-color | tee plan-output.txt
+          PLAN_EXIT_CODE=${PIPESTATUS[0]}
+          echo "plan_exit_code=${PLAN_EXIT_CODE}" >> $GITHUB_OUTPUT
+          
+          if [ ${PLAN_EXIT_CODE} -ne 0 ]; then
+            echo "⚠️ Terraform plan completed with errors (exit code: ${PLAN_EXIT_CODE})"
+            echo "Plan file may be incomplete and cannot be applied"
+            echo "::error::Plan failed - cannot apply incomplete plan"
+            exit ${PLAN_EXIT_CODE}
+          fi
+          
+          echo "✅ Plan completed successfully"
 
       - name: Upload plan artifact
         uses: actions/upload-artifact@v4
@@ -293,8 +304,24 @@ jobs:
           github.event.inputs.action == 'apply' && (
             (matrix.environment == 'dev') ||
             ((matrix.environment == 'staging' || matrix.environment == 'prod') && github.ref == 'refs/heads/main')
-          )
+          ) && steps.plan.outputs.plan_exit_code == '0'
         run: |
+          # Verify plan file exists and is valid
+          if [ ! -f "tfplan-${{ matrix.environment }}" ]; then
+            echo "❌ Error: Plan file tfplan-${{ matrix.environment }} not found"
+            exit 1
+          fi
+          
+          # Check if plan is valid (not incomplete)
+          terraform show -json tfplan-${{ matrix.environment }} > /dev/null 2>&1
+          if [ $? -ne 0 ]; then
+            echo "❌ Error: Plan file is incomplete or corrupted. Cannot apply."
+            echo "This usually happens when the plan was created with errors."
+            echo "Please re-run the workflow to create a fresh plan."
+            exit 1
+          fi
+          
+          echo "✅ Plan file is valid. Applying..."
           terraform apply -auto-approve tfplan-${{ matrix.environment }}
 
       - name: Capture outputs
