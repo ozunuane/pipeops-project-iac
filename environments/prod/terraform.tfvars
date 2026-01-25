@@ -16,7 +16,7 @@ database_subnet_cidrs = ["10.0.201.0/24", "10.0.202.0/24", "10.0.203.0/24"]
 
 # EKS Configuration
 kubernetes_version = "1.33"
-cluster_exists     = false # Set to true after EKS cluster is created (enables Helm resources)
+cluster_exists     = true # EKS cluster is running - enables Helm resources and backups
 
 # RDS Configuration - PRODUCTION with Multi-AZ + Read Replicas
 db_instance_class              = "db.m5d.large"               # Larger instance for production

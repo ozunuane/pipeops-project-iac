@@ -93,22 +93,24 @@ module "dr_eks" {
 # DR Kubernetes Provider
 # ====================================================================
 # Configure Kubernetes provider for DR cluster management
+# NOTE: These providers only work when cluster_exists = true
 
 data "aws_eks_cluster_auth" "dr_cluster" {
-  name = module.dr_eks.cluster_name
+  count = var.cluster_exists ? 1 : 0
+  name  = module.dr_eks.cluster_name
 }
 
 provider "kubernetes" {
-  host                   = module.dr_eks.cluster_endpoint
-  cluster_ca_certificate = base64decode(module.dr_eks.cluster_certificate_authority_data)
-  token                  = data.aws_eks_cluster_auth.dr_cluster.token
+  host                   = var.cluster_exists ? module.dr_eks.cluster_endpoint : "https://localhost"
+  cluster_ca_certificate = var.cluster_exists ? base64decode(module.dr_eks.cluster_certificate_authority_data) : ""
+  token                  = var.cluster_exists ? data.aws_eks_cluster_auth.dr_cluster[0].token : ""
 }
 
 provider "helm" {
   kubernetes {
-    host                   = module.dr_eks.cluster_endpoint
-    cluster_ca_certificate = base64decode(module.dr_eks.cluster_certificate_authority_data)
-    token                  = data.aws_eks_cluster_auth.dr_cluster.token
+    host                   = var.cluster_exists ? module.dr_eks.cluster_endpoint : "https://localhost"
+    cluster_ca_certificate = var.cluster_exists ? base64decode(module.dr_eks.cluster_certificate_authority_data) : ""
+    token                  = var.cluster_exists ? data.aws_eks_cluster_auth.dr_cluster[0].token : ""
   }
 }
 
@@ -124,6 +126,8 @@ provider "helm" {
 # ====================================================================
 
 resource "helm_release" "dr_external_secrets" {
+  count = var.cluster_exists ? 1 : 0
+
   name             = "external-secrets"
   repository       = "https://charts.external-secrets.io"
   chart            = "external-secrets"
@@ -138,7 +142,7 @@ resource "helm_release" "dr_external_secrets" {
 
   set {
     name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-    value = aws_iam_role.dr_external_secrets.arn
+    value = aws_iam_role.dr_external_secrets[0].arn
   }
 
   depends_on = [
@@ -151,7 +155,8 @@ resource "helm_release" "dr_external_secrets" {
 # ====================================================================
 
 resource "aws_iam_role" "dr_external_secrets" {
-  name = "${local.dr_cluster_name}-external-secrets"
+  count = var.cluster_exists ? 1 : 0
+  name  = "${local.dr_cluster_name}-external-secrets"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -179,8 +184,9 @@ resource "aws_iam_role" "dr_external_secrets" {
 }
 
 resource "aws_iam_role_policy" "dr_external_secrets" {
-  name = "${local.dr_cluster_name}-external-secrets"
-  role = aws_iam_role.dr_external_secrets.id
+  count = var.cluster_exists ? 1 : 0
+  name  = "${local.dr_cluster_name}-external-secrets"
+  role  = aws_iam_role.dr_external_secrets[0].id
 
   policy = jsonencode({
     Version = "2012-10-17"
