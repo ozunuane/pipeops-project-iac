@@ -70,6 +70,12 @@ variable "kubernetes_version" {
   default     = "1.33"
 }
 
+variable "cluster_exists" {
+  description = "Set to true after EKS cluster is created to enable Helm/K8s resources"
+  type        = bool
+  default     = false
+}
+
 variable "dr_cluster_endpoint_public_access_cidrs" {
   description = "CIDR blocks allowed to access DR EKS cluster endpoint"
   type        = list(string)
