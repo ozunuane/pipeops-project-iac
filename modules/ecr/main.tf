@@ -2,6 +2,7 @@
 # ECR Module - Elastic Container Registry
 #------------------------------------------------------------------------------
 # Creates ECR repositories with:
+# - KMS encryption (customer managed key)
 # - Image scanning on push
 # - Lifecycle policies
 # - Cross-region replication (for DR)
@@ -17,7 +18,67 @@ locals {
     for name in var.repository_names :
     name => "${var.project_name}-${var.environment}-${name}"
   }
+
+  # Use provided KMS key or the one we create
+  ecr_kms_key_arn = var.kms_key_arn != null ? var.kms_key_arn : aws_kms_key.ecr[0].arn
 }
+
+#------------------------------------------------------------------------------
+# KMS Key for ECR Encryption
+#------------------------------------------------------------------------------
+
+resource "aws_kms_key" "ecr" {
+  count = var.kms_key_arn == null ? 1 : 0
+
+  description             = "KMS key for ECR repository encryption - ${var.project_name}-${var.environment}"
+  deletion_window_in_days = 30
+  enable_key_rotation     = true
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "Enable IAM User Permissions"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        Sid    = "Allow ECR Service"
+        Effect = "Allow"
+        Principal = {
+          Service = "ecr.amazonaws.com"
+        }
+        Action = [
+          "kms:Encrypt",
+          "kms:Decrypt",
+          "kms:ReEncrypt*",
+          "kms:GenerateDataKey*",
+          "kms:DescribeKey"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+
+  tags = merge(var.tags, {
+    Name        = "${var.project_name}-${var.environment}-ecr-kms"
+    Environment = var.environment
+  })
+}
+
+resource "aws_kms_alias" "ecr" {
+  count = var.kms_key_arn == null ? 1 : 0
+
+  name          = "alias/${var.project_name}-${var.environment}-ecr"
+  target_key_id = aws_kms_key.ecr[0].key_id
+}
+
+# Data source for current account
+data "aws_caller_identity" "current" {}
 
 #------------------------------------------------------------------------------
 # ECR Repositories
@@ -34,10 +95,10 @@ resource "aws_ecr_repository" "main" {
     scan_on_push = var.scan_on_push
   }
 
-  # Encryption configuration
+  # Encryption configuration - Always use KMS for security
   encryption_configuration {
-    encryption_type = var.encryption_type
-    kms_key         = var.encryption_type == "KMS" ? var.kms_key_arn : null
+    encryption_type = "KMS"
+    kms_key         = local.ecr_kms_key_arn
   }
 
   tags = merge(var.tags, {
@@ -45,6 +106,8 @@ resource "aws_ecr_repository" "main" {
     Repository  = each.key
     Environment = var.environment
   })
+
+  depends_on = [aws_kms_key.ecr]
 }
 
 #------------------------------------------------------------------------------
