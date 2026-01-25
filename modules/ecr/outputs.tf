@@ -63,3 +63,14 @@ output "docker_login_command" {
   description = "Command to authenticate Docker with ECR"
   value       = "aws ecr get-login-password --region ${var.region} | docker login --username AWS --password-stdin ${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.region}.amazonaws.com"
 }
+
+# KMS key for ECR encryption
+output "kms_key_arn" {
+  description = "ARN of the KMS key used for ECR encryption"
+  value       = local.ecr_kms_key_arn
+}
+
+output "kms_key_id" {
+  description = "ID of the KMS key used for ECR encryption"
+  value       = var.kms_key_arn == null ? aws_kms_key.ecr[0].key_id : null
+}
