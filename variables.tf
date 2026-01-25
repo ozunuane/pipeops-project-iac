@@ -410,6 +410,12 @@ variable "backup_cold_storage_after" {
   default     = 0
 }
 
+variable "backup_weekly_retention_days" {
+  description = "Number of days to retain weekly backups (should be longer than daily retention)"
+  type        = number
+  default     = 90
+}
+
 variable "enable_backup_cross_region_copy" {
   description = "Enable cross-region backup copy to DR region"
   type        = bool

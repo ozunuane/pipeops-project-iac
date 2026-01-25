@@ -21,11 +21,14 @@ resource "helm_release" "argocd" {
   namespace        = "argocd"
   create_namespace = true
 
-  # Timeout for installation (ArgoCD can take a while)
-  timeout = 600
+  # Timeout for installation (EKS Auto Mode needs time to provision nodes)
+  timeout = 900
 
   # Wait for all resources to be ready
   wait = true
+
+  # Don't fail if pods aren't immediately ready (Auto Mode node provisioning)
+  wait_for_jobs = false
 
   # Basic values - customize in values file or via set blocks
   values = [

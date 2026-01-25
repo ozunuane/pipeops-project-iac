@@ -16,6 +16,13 @@ resource "helm_release" "prometheus_stack" {
   version    = var.prometheus_stack_version
   namespace  = kubernetes_namespace.monitoring.metadata[0].name
 
+  # Timeout for installation (EKS Auto Mode needs time to provision nodes)
+  timeout = 900
+
+  # Don't wait for all pods - Auto Mode will provision nodes asynchronously
+  wait          = false
+  wait_for_jobs = false
+
   values = [
     yamlencode({
       fullnameOverride = "prometheus"

@@ -70,6 +70,7 @@ enable_logging    = true
 enable_eks_backup               = true
 backup_schedule                 = "cron(0 6 * * ? *)" # Daily at 6:00 AM UTC
 backup_retention_days           = 35                  # Keep daily backups for 35 days
+backup_weekly_retention_days    = 90                  # Keep weekly backups for 90 days
 backup_cold_storage_after       = 0                   # Disable cold storage (set to 7+ to enable)
 enable_backup_cross_region_copy = true                # Copy backups to DR region
 
