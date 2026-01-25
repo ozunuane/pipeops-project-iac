@@ -54,7 +54,8 @@ enable_logging    = true
 # AWS Backup Configuration
 enable_eks_backup               = true
 backup_schedule                 = "cron(0 6 * * ? *)" # Daily at 6:00 AM UTC
-backup_retention_days           = 14                  # Keep backups for 14 days
+backup_retention_days           = 14                  # Keep daily backups for 14 days
+backup_weekly_retention_days    = 60                  # Keep weekly backups for 60 days
 backup_cold_storage_after       = 0                   # Disable cold storage
 enable_backup_cross_region_copy = false               # No cross-region copy for staging
 

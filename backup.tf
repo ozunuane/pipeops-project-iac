@@ -83,9 +83,10 @@ resource "aws_backup_plan" "eks_daily" {
     target_vault_name = aws_backup_vault.eks[0].name
     schedule          = "cron(0 6 ? * SUN *)" # 6:00 AM UTC every Sunday
 
+    # No cold storage for weekly backups (simpler, cost-effective)
+    # If cold storage is needed: delete_after must be >= cold_storage_after + 90 days
     lifecycle {
-      cold_storage_after = 30 # Move to cold storage after 30 days
-      delete_after       = 90 # Keep weekly backups for 90 days
+      delete_after = var.backup_weekly_retention_days # Keep weekly backups longer than daily
     }
 
     recovery_point_tags = {
