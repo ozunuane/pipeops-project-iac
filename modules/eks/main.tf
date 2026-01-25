@@ -69,10 +69,6 @@ resource "aws_eks_cluster" "main" {
     aws_iam_role_policy_attachment.node_AmazonEKSWorkerNodePolicy,
     aws_iam_role_policy_attachment.node_AmazonEKS_CNI_Policy,
     aws_iam_role_policy_attachment.node_AmazonEC2ContainerRegistryReadOnly,
-    aws_iam_role_policy_attachment.node_AmazonEBSCSIDriverPolicy,
-    # Service-linked roles required for Auto Mode
-    aws_iam_service_linked_role.eks_nodepool,
-    aws_iam_service_linked_role.eks_compute,
   ]
 
   tags = var.tags
@@ -80,16 +76,16 @@ resource "aws_eks_cluster" "main" {
   # Lifecycle rules for cluster replacement
   # - Destroy existing cluster before creating new one (not create_before_destroy)
   # - Replace if IAM roles change (ensures proper permissions on new cluster)
-  lifecycle {
-    create_before_destroy = false
-    
+  # lifecycle {
+  #   create_before_destroy = false
+
     # # Force replacement if these critical resources change
     # replace_triggered_by = [
     #   aws_iam_role.cluster.arn,
     #   aws_iam_role.node.arn,
     #   aws_iam_instance_profile.node.arn,
     # ]
-  }
+  # }
 }
 
 # KMS key for EKS encryption
@@ -443,24 +439,16 @@ resource "aws_iam_openid_connect_provider" "cluster" {
   })
 }
 
-# Service-Linked Roles for EKS Auto Mode
-# These roles are automatically created by AWS when needed, but we ensure they exist
-resource "aws_iam_service_linked_role" "eks_nodepool" {
-  aws_service_name = "eks-nodepool.amazonaws.com"
-  description      = "Service-linked role for EKS Auto Mode node pools"
-
-  # Only create if it doesn't already exist
-  lifecycle {
-    ignore_changes = all
-  }
-}
-
-resource "aws_iam_service_linked_role" "eks_compute" {
-  aws_service_name = "compute.eks.amazonaws.com"
-  description      = "Service-linked role for EKS Auto Mode compute management"
-
-  # Only create if it doesn't already exist
-  lifecycle {
-    ignore_changes = all
-  }
-}
+# ==========================================
+# Service-Linked Roles
+# ==========================================
+# NOTE: Service-linked roles for EKS Auto Mode are automatically created by AWS
+# when the cluster is created. We do NOT need to create them manually.
+# 
+# AWS automatically creates:
+# - AWSServiceRoleForAmazonEKS (for cluster management)
+# - Any additional roles needed for Auto Mode
+#
+# Attempting to create them manually will fail with "not a valid AWS service name"
+# Reference: https://docs.aws.amazon.com/eks/latest/userguide/using-service-linked-roles.html
+# ==========================================
