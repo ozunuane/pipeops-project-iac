@@ -1,6 +1,6 @@
 # Global Infrastructure - DNS & Certificates
 
-This workspace manages global resources that span multiple regions and are critical for DR failover.
+This workspace manages global resources that span multiple regions and are critical for DR failover. It supports **multiple domain names**, each with its own hosted zone and certificates.
 
 ## Overview
 
@@ -8,57 +8,66 @@ This workspace manages global resources that span multiple regions and are criti
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                        GLOBAL INFRASTRUCTURE                                 │
 │                                                                             │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                      Route53 Hosted Zone                             │   │
-│  │                         example.com                                  │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                                    │                                        │
-│              ┌─────────────────────┴─────────────────────┐                 │
-│              ▼                                           ▼                 │
-│    ┌─────────────────────┐                   ┌─────────────────────┐       │
-│    │   Health Check      │                   │   Health Check      │       │
-│    │   (Primary)         │                   │   (DR)              │       │
-│    └─────────────────────┘                   └─────────────────────┘       │
-│              │                                           │                 │
-│              ▼                                           ▼                 │
-│    ┌─────────────────────┐                   ┌─────────────────────┐       │
-│    │   Failover Record   │                   │   Failover Record   │       │
-│    │   PRIMARY           │                   │   SECONDARY         │       │
-│    │   app.example.com   │                   │   app.example.com   │       │
-│    └─────────────────────┘                   └─────────────────────┘       │
-│              │                                           │                 │
-└──────────────│───────────────────────────────────────────│──────────────────┘
-               │                                           │
-               ▼                                           ▼
-┌──────────────────────────────┐          ┌──────────────────────────────┐
-│     PRIMARY (us-west-2)      │          │       DR (us-east-1)         │
-│                              │          │                              │
-│  ┌────────────────────────┐  │          │  ┌────────────────────────┐  │
-│  │  ACM Certificate       │  │          │  │  ACM Certificate       │  │
-│  │  *.example.com         │  │          │  │  *.example.com         │  │
-│  └────────────────────────┘  │          │  └────────────────────────┘  │
-│                              │          │                              │
-│  ┌────────────────────────┐  │          │  ┌────────────────────────┐  │
-│  │  EKS Cluster + ALB     │  │          │  │  EKS Cluster + ALB     │  │
-│  │  (Main)                │  │          │  │  (Standby)             │  │
-│  └────────────────────────┘  │          │  └────────────────────────┘  │
-│                              │          │                              │
-└──────────────────────────────┘          └──────────────────────────────┘
+│  ┌─────────────────────────┐    ┌─────────────────────────┐                │
+│  │   Route53 Hosted Zone   │    │   Route53 Hosted Zone   │                │
+│  │     example.com         │    │    another.io           │                │
+│  └───────────┬─────────────┘    └───────────┬─────────────┘                │
+│              │                              │                               │
+│              └──────────────┬───────────────┘                               │
+│                             │                                               │
+│              ┌──────────────┴───────────────┐                               │
+│              ▼                              ▼                               │
+│    ┌─────────────────────┐      ┌─────────────────────┐                    │
+│    │   Health Check      │      │   Health Check      │                    │
+│    │   (Primary)         │      │   (DR)              │                    │
+│    └─────────────────────┘      └─────────────────────┘                    │
+│              │                              │                               │
+│              ▼                              ▼                               │
+│    ┌─────────────────────┐      ┌─────────────────────┐                    │
+│    │   Failover Record   │      │   Failover Record   │                    │
+│    │   PRIMARY           │      │   SECONDARY         │                    │
+│    └─────────────────────┘      └─────────────────────┘                    │
+│              │                              │                               │
+└──────────────│──────────────────────────────│───────────────────────────────┘
+               │                              │
+               ▼                              ▼
+┌──────────────────────────────┐  ┌──────────────────────────────┐
+│     PRIMARY (us-west-2)      │  │       DR (us-east-1)         │
+│                              │  │                              │
+│  ┌────────────────────────┐  │  │  ┌────────────────────────┐  │
+│  │  ACM Certificates      │  │  │  │  ACM Certificates      │  │
+│  │  - *.example.com       │  │  │  │  - *.example.com       │  │
+│  │  - *.another.io        │  │  │  │  - *.another.io        │  │
+│  └────────────────────────┘  │  │  └────────────────────────┘  │
+│                              │  │                              │
+│  ┌────────────────────────┐  │  │  ┌────────────────────────┐  │
+│  │  EKS Cluster + ALB     │  │  │  │  EKS Cluster + ALB     │  │
+│  │  (Main)                │  │  │  │  (Standby)             │  │
+│  └────────────────────────┘  │  │  └────────────────────────┘  │
+│                              │  │                              │
+└──────────────────────────────┘  └──────────────────────────────┘
 ```
 
 ## What This Workspace Manages
 
 | Resource | Description |
 |----------|-------------|
-| **Route53 Hosted Zone** | DNS zone for your domain |
-| **ACM Certificates** | SSL certificates in both regions |
+| **Route53 Hosted Zones** | DNS zones for all your domains |
+| **ACM Certificates** | SSL certificates in both regions for all domains |
 | **Health Checks** | Monitor primary and DR cluster health |
 | **Failover Records** | DNS failover routing between clusters |
 | **Service DNS** | Records for ArgoCD, Grafana, API, etc. |
 
+## Key Features
+
+- **Multiple Domains**: Manage several root domains from a single workspace
+- **Per-Domain Certificates**: Each domain gets its own certificates in both regions
+- **Automatic Validation**: DNS validation records created automatically
+- **Failover Routing**: Primary domain uses failover; secondary domains use simple routing
+
 ## Prerequisites
 
-1. **Domain registered** - Either in Route53 or external registrar
+1. **Domains registered** - Either in Route53 or external registrar
 2. **Primary EKS deployed** - Main infrastructure must be running
 3. **DR EKS deployed** (optional) - For failover configuration
 4. **ALBs created** - Via Kubernetes Ingress resources
@@ -93,22 +102,35 @@ aws dynamodb create-table \
   --region us-west-2
 ```
 
-### 2. Configure Your Domain
+### 2. Configure Your Domains
 
 Edit `environments/prod/terraform.tfvars`:
 
 ```hcl
-# Replace with your domain
-domain_name = "yourdomain.com"
-
-# Set to true if you want Terraform to create the hosted zone
-create_hosted_zone = false
-
-# Certificate SANs
-certificate_san = [
-  "*.yourdomain.com",
-  "api.yourdomain.com",
-  "argocd.yourdomain.com"
+# Multiple domains with their configurations
+domain_names = [
+  {
+    domain_name              = "example.com"       # Your primary domain
+    create_hosted_zone       = false               # Use existing zone
+    existing_hosted_zone_id  = "Z1234567890ABC"    # Your zone ID
+    app_subdomain            = "app"               # Creates app.example.com
+    create_certificates      = true
+    subject_alternative_names = [
+      "*.example.com",
+      "api.example.com",
+      "argocd.example.com"
+    ]
+  },
+  {
+    domain_name              = "another-domain.io" # Additional domain
+    create_hosted_zone       = true                # Let Terraform create zone
+    existing_hosted_zone_id  = ""
+    app_subdomain            = ""                  # Use root domain
+    create_certificates      = true
+    subject_alternative_names = [
+      "*.another-domain.io"
+    ]
+  }
 ]
 ```
 
@@ -142,8 +164,50 @@ dr_alb_dns_name = "k8s-default-ingressp-xxxxx.us-east-1.elb.amazonaws.com"
 dr_alb_zone_id  = "Z35SXDOTRQ7X7K"  # ALB zone ID for us-east-1
 
 # Health check endpoints
-primary_health_check_fqdn = "primary-direct.yourdomain.com"
-dr_health_check_fqdn      = "dr-direct.yourdomain.com"
+primary_health_check_fqdn = "primary-direct.example.com"
+dr_health_check_fqdn      = "dr-direct.example.com"
+```
+
+## Multi-Domain Configuration
+
+### Primary vs Secondary Domains
+
+| Feature | Primary Domain (First) | Secondary Domains |
+|---------|------------------------|-------------------|
+| Failover routing | ✅ Yes | ❌ Simple routing |
+| Health checks | ✅ Associated | ❌ N/A |
+| Service subdomains | ✅ argocd.*, grafana.* | ❌ N/A |
+| Certificate | ✅ Both regions | ✅ Both regions |
+
+### Example: Multiple Brands
+
+```hcl
+domain_names = [
+  {
+    domain_name              = "main-brand.com"
+    create_hosted_zone       = false
+    existing_hosted_zone_id  = "Z123..."
+    app_subdomain            = "app"
+    create_certificates      = true
+    subject_alternative_names = ["*.main-brand.com"]
+  },
+  {
+    domain_name              = "secondary-brand.com"
+    create_hosted_zone       = false
+    existing_hosted_zone_id  = "Z456..."
+    app_subdomain            = "app"
+    create_certificates      = true
+    subject_alternative_names = ["*.secondary-brand.com"]
+  },
+  {
+    domain_name              = "api.io"
+    create_hosted_zone       = true  # New zone
+    existing_hosted_zone_id  = ""
+    app_subdomain            = ""    # Use root
+    create_certificates      = true
+    subject_alternative_names = ["*.api.io"]
+  }
+]
 ```
 
 ## Failover Behavior
@@ -204,14 +268,35 @@ aws elbv2 describe-load-balancers --region us-west-2 \
 After deployment, get certificate ARNs for use in other workspaces:
 
 ```bash
-# Primary certificate ARN (use in main EKS Ingress)
+# All certificate ARNs by domain
+terraform output certificate_arns_by_domain
+
+# Primary certificate ARN (first domain)
 terraform output primary_certificate_arn
 
-# DR certificate ARN (use in DR EKS Ingress)
+# DR certificate ARN (first domain)
 terraform output dr_certificate_arn
 
-# Hosted zone ID
-terraform output hosted_zone_id
+# Hosted zone IDs
+terraform output hosted_zone_ids
+
+# Summary of all domains
+terraform output summary
+```
+
+### Example Output
+
+```hcl
+certificate_arns_by_domain = {
+  "example_com" = {
+    primary = "arn:aws:acm:us-west-2:xxx:certificate/abc123"
+    dr      = "arn:aws:acm:us-east-1:xxx:certificate/def456"
+  }
+  "another_io" = {
+    primary = "arn:aws:acm:us-west-2:xxx:certificate/ghi789"
+    dr      = "arn:aws:acm:us-east-1:xxx:certificate/jkl012"
+  }
+}
 ```
 
 ## Integration with EKS Workspaces
@@ -242,9 +327,12 @@ data "terraform_remote_state" "global" {
   }
 }
 
-# Use certificate ARN
+# Use primary certificate ARN
 locals {
-  certificate_arn = data.terraform_remote_state.global.outputs.primary_certificate_arn
+  primary_cert = data.terraform_remote_state.global.outputs.primary_certificate_arn
+  
+  # Or get specific domain certificate
+  example_cert = data.terraform_remote_state.global.outputs.certificate_arns_by_domain["example_com"].primary
 }
 ```
 
@@ -274,12 +362,21 @@ aws route53 get-health-check-status \
 
 ```bash
 # Check DNS propagation
-dig +short app.yourdomain.com
+dig +short app.example.com
 
 # Check Route53 records
 aws route53 list-resource-record-sets \
-  --hosted-zone-id $(terraform output -raw hosted_zone_id)
+  --hosted-zone-id $(terraform output -json hosted_zone_ids | jq -r '.example_com')
 ```
+
+### External Registrar Setup
+
+If using an external registrar (e.g., GoDaddy, Namecheap):
+
+1. Deploy with `create_hosted_zone = true`
+2. Get name servers: `terraform output hosted_zone_name_servers`
+3. Update registrar's NS records to point to AWS name servers
+4. Wait for propagation (up to 48 hours)
 
 ## File Structure
 

@@ -78,51 +78,86 @@ data "terraform_remote_state" "dr" {
 }
 
 # ====================================================================
-# Route53 Hosted Zone
+# Locals - Domain Configuration
 # ====================================================================
 
-# Create or use existing hosted zone
-resource "aws_route53_zone" "main" {
-  count = var.create_hosted_zone ? 1 : 0
-
-  name    = var.domain_name
-  comment = "Managed by Terraform - ${var.project_name}"
-
-  tags = {
-    Name        = var.domain_name
-    Environment = "global"
-  }
-}
-
-# Use existing hosted zone
-data "aws_route53_zone" "existing" {
-  count = var.create_hosted_zone ? 0 : 1
-
-  name         = var.domain_name
-  private_zone = false
-}
-
 locals {
-  hosted_zone_id = var.create_hosted_zone ? aws_route53_zone.main[0].zone_id : data.aws_route53_zone.existing[0].zone_id
-  
+  # Merge legacy single domain with new multi-domain support
+  # If 'domains' is empty but 'domain_name' is set, create a single domain entry
+  all_domains = length(var.domains) > 0 ? var.domains : (
+    var.domain_name != "" ? {
+      "default" = {
+        domain_name        = var.domain_name
+        create_hosted_zone = var.create_hosted_zone
+        create_certificate = var.create_certificates
+        certificate_san    = var.certificate_san
+        app_subdomain      = var.app_subdomain
+        primary            = true
+      }
+    } : {}
+  )
+
+  # Filter domains that need hosted zones created
+  domains_create_zone       = { for k, v in local.all_domains : k => v if v.create_hosted_zone }
+  domains_use_existing_zone = { for k, v in local.all_domains : k => v if !v.create_hosted_zone }
+
+  # Filter domains that need certificates
+  domains_with_certs = { for k, v in local.all_domains : k => v if v.create_certificate }
+
+  # Get primary domain for failover
+  primary_domain_key = [for k, v in local.all_domains : k if v.primary][0]
+  primary_domain     = local.all_domains[local.primary_domain_key]
+
+  # Build hosted zone ID map
+  hosted_zone_ids = merge(
+    { for k, v in aws_route53_zone.domains : k => v.zone_id },
+    { for k, v in data.aws_route53_zone.existing : k => v.zone_id }
+  )
+
   # EKS endpoints from remote states
   primary_eks_endpoint = var.enable_primary_cluster && length(data.terraform_remote_state.primary) > 0 ? try(data.terraform_remote_state.primary[0].outputs.cluster_endpoint, "") : ""
   dr_eks_endpoint      = var.enable_dr_cluster && length(data.terraform_remote_state.dr) > 0 ? try(data.terraform_remote_state.dr[0].outputs.dr_eks_cluster_endpoint, "") : ""
-  
+
   # ALB endpoints (if available)
   primary_alb_dns = var.primary_alb_dns_name != "" ? var.primary_alb_dns_name : ""
   dr_alb_dns      = var.dr_alb_dns_name != "" ? var.dr_alb_dns_name : ""
 }
 
 # ====================================================================
-# ACM Certificates - Primary Region
+# Route53 Hosted Zones - Multiple Domains
+# ====================================================================
+
+# Create new hosted zones
+resource "aws_route53_zone" "domains" {
+  for_each = local.domains_create_zone
+
+  name    = each.value.domain_name
+  comment = "Managed by Terraform - ${var.project_name} - ${each.key}"
+
+  tags = {
+    Name        = each.value.domain_name
+    DomainKey   = each.key
+    Environment = "global"
+  }
+}
+
+# Use existing hosted zones
+data "aws_route53_zone" "existing" {
+  for_each = local.domains_use_existing_zone
+
+  name         = each.value.domain_name
+  private_zone = false
+}
+
+# ====================================================================
+# ACM Certificates - Primary Region (Multiple Domains)
 # ====================================================================
 
 resource "aws_acm_certificate" "primary" {
-  count = var.create_certificates ? 1 : 0
+  for_each = local.domains_with_certs
 
-  domain_name               = var.domain_name
-  subject_alternative_names = var.certificate_san
+  domain_name               = each.value.domain_name
+  subject_alternative_names = each.value.certificate_san
   validation_method         = "DNS"
 
   lifecycle {
@@ -130,48 +165,59 @@ resource "aws_acm_certificate" "primary" {
   }
 
   tags = {
-    Name        = "${var.project_name}-primary-cert"
+    Name        = "${var.project_name}-${each.key}-primary-cert"
+    DomainKey   = each.key
+    Domain      = each.value.domain_name
     Environment = "prod"
     Region      = var.primary_region
   }
 }
 
-# DNS validation records for primary cert
+# DNS validation records for primary certs
 resource "aws_route53_record" "primary_cert_validation" {
-  for_each = var.create_certificates ? {
-    for dvo in aws_acm_certificate.primary[0].domain_validation_options : dvo.domain_name => {
-      name   = dvo.resource_record_name
-      record = dvo.resource_record_value
-      type   = dvo.resource_record_type
-    }
-  } : {}
+  for_each = {
+    for item in flatten([
+      for domain_key, domain in local.domains_with_certs : [
+        for dvo in aws_acm_certificate.primary[domain_key].domain_validation_options : {
+          key        = "${domain_key}-${dvo.domain_name}"
+          domain_key = domain_key
+          name       = dvo.resource_record_name
+          record     = dvo.resource_record_value
+          type       = dvo.resource_record_type
+        }
+      ]
+    ]) : item.key => item
+  }
 
   allow_overwrite = true
   name            = each.value.name
   records         = [each.value.record]
   ttl             = 60
   type            = each.value.type
-  zone_id         = local.hosted_zone_id
+  zone_id         = local.hosted_zone_ids[each.value.domain_key]
 }
 
-# Certificate validation
+# Certificate validation - Primary
 resource "aws_acm_certificate_validation" "primary" {
-  count = var.create_certificates ? 1 : 0
+  for_each = local.domains_with_certs
 
-  certificate_arn         = aws_acm_certificate.primary[0].arn
-  validation_record_fqdns = [for record in aws_route53_record.primary_cert_validation : record.fqdn]
+  certificate_arn = aws_acm_certificate.primary[each.key].arn
+  validation_record_fqdns = [
+    for record in aws_route53_record.primary_cert_validation : record.fqdn
+    if startswith(record.name, each.value.domain_name) || endswith(record.name, ".${each.value.domain_name}.")
+  ]
 }
 
 # ====================================================================
-# ACM Certificates - DR Region
+# ACM Certificates - DR Region (Multiple Domains)
 # ====================================================================
 
 resource "aws_acm_certificate" "dr" {
-  count    = var.create_certificates && var.enable_dr_cluster ? 1 : 0
+  for_each = var.enable_dr_cluster ? local.domains_with_certs : {}
   provider = aws.dr
 
-  domain_name               = var.domain_name
-  subject_alternative_names = var.certificate_san
+  domain_name               = each.value.domain_name
+  subject_alternative_names = each.value.certificate_san
   validation_method         = "DNS"
 
   lifecycle {
@@ -179,20 +225,25 @@ resource "aws_acm_certificate" "dr" {
   }
 
   tags = {
-    Name             = "${var.project_name}-dr-cert"
+    Name             = "${var.project_name}-${each.key}-dr-cert"
+    DomainKey        = each.key
+    Domain           = each.value.domain_name
     Environment      = "drprod"
     Region           = var.dr_region
     DisasterRecovery = "true"
   }
 }
 
-# Certificate validation for DR (uses same DNS records)
+# Certificate validation - DR (uses same DNS records as primary)
 resource "aws_acm_certificate_validation" "dr" {
-  count    = var.create_certificates && var.enable_dr_cluster ? 1 : 0
+  for_each = var.enable_dr_cluster ? local.domains_with_certs : {}
   provider = aws.dr
 
-  certificate_arn         = aws_acm_certificate.dr[0].arn
-  validation_record_fqdns = [for record in aws_route53_record.primary_cert_validation : record.fqdn]
+  certificate_arn = aws_acm_certificate.dr[each.key].arn
+  validation_record_fqdns = [
+    for record in aws_route53_record.primary_cert_validation : record.fqdn
+    if startswith(record.name, each.value.domain_name) || endswith(record.name, ".${each.value.domain_name}.")
+  ]
 }
 
 # ====================================================================
@@ -237,15 +288,15 @@ resource "aws_route53_health_check" "dr" {
 }
 
 # ====================================================================
-# DNS Records - Failover Configuration
+# DNS Records - Failover Configuration (Primary Domain Only)
 # ====================================================================
 
 # Primary DNS record (failover routing)
 resource "aws_route53_record" "app_primary" {
-  count = var.enable_failover && local.primary_alb_dns != "" ? 1 : 0
+  count = var.enable_failover && local.primary_alb_dns != "" && length(local.all_domains) > 0 ? 1 : 0
 
-  zone_id = local.hosted_zone_id
-  name    = var.app_subdomain != "" ? "${var.app_subdomain}.${var.domain_name}" : var.domain_name
+  zone_id = local.hosted_zone_ids[local.primary_domain_key]
+  name    = local.primary_domain.app_subdomain != "" ? "${local.primary_domain.app_subdomain}.${local.primary_domain.domain_name}" : local.primary_domain.domain_name
   type    = "A"
 
   failover_routing_policy {
@@ -264,10 +315,10 @@ resource "aws_route53_record" "app_primary" {
 
 # DR DNS record (failover routing)
 resource "aws_route53_record" "app_dr" {
-  count = var.enable_failover && local.dr_alb_dns != "" && var.enable_dr_cluster ? 1 : 0
+  count = var.enable_failover && local.dr_alb_dns != "" && var.enable_dr_cluster && length(local.all_domains) > 0 ? 1 : 0
 
-  zone_id = local.hosted_zone_id
-  name    = var.app_subdomain != "" ? "${var.app_subdomain}.${var.domain_name}" : var.domain_name
+  zone_id = local.hosted_zone_ids[local.primary_domain_key]
+  name    = local.primary_domain.app_subdomain != "" ? "${local.primary_domain.app_subdomain}.${local.primary_domain.domain_name}" : local.primary_domain.domain_name
   type    = "A"
 
   failover_routing_policy {
@@ -285,15 +336,15 @@ resource "aws_route53_record" "app_dr" {
 }
 
 # ====================================================================
-# Simple DNS Records (No Failover)
+# Simple DNS Records (No Failover) - All Domains
 # ====================================================================
 
-# Simple A record pointing to primary (when failover is disabled)
+# Simple A record pointing to primary for each domain (when failover is disabled)
 resource "aws_route53_record" "app_simple" {
-  count = !var.enable_failover && local.primary_alb_dns != "" ? 1 : 0
+  for_each = !var.enable_failover && local.primary_alb_dns != "" ? local.all_domains : {}
 
-  zone_id = local.hosted_zone_id
-  name    = var.app_subdomain != "" ? "${var.app_subdomain}.${var.domain_name}" : var.domain_name
+  zone_id = local.hosted_zone_ids[each.key]
+  name    = each.value.app_subdomain != "" ? "${each.value.app_subdomain}.${each.value.domain_name}" : each.value.domain_name
   type    = "A"
 
   alias {
@@ -304,15 +355,15 @@ resource "aws_route53_record" "app_simple" {
 }
 
 # ====================================================================
-# Additional DNS Records
+# Additional DNS Records (Primary Domain Only)
 # ====================================================================
 
 # ArgoCD subdomain
 resource "aws_route53_record" "argocd" {
-  count = var.argocd_alb_dns != "" ? 1 : 0
+  count = var.argocd_alb_dns != "" && length(local.all_domains) > 0 ? 1 : 0
 
-  zone_id = local.hosted_zone_id
-  name    = "argocd.${var.domain_name}"
+  zone_id = local.hosted_zone_ids[local.primary_domain_key]
+  name    = "argocd.${local.primary_domain.domain_name}"
   type    = "A"
 
   alias {
@@ -324,10 +375,10 @@ resource "aws_route53_record" "argocd" {
 
 # Grafana subdomain
 resource "aws_route53_record" "grafana" {
-  count = var.grafana_alb_dns != "" ? 1 : 0
+  count = var.grafana_alb_dns != "" && length(local.all_domains) > 0 ? 1 : 0
 
-  zone_id = local.hosted_zone_id
-  name    = "grafana.${var.domain_name}"
+  zone_id = local.hosted_zone_ids[local.primary_domain_key]
+  name    = "grafana.${local.primary_domain.domain_name}"
   type    = "A"
 
   alias {
@@ -339,10 +390,10 @@ resource "aws_route53_record" "grafana" {
 
 # API subdomain
 resource "aws_route53_record" "api" {
-  count = var.api_alb_dns != "" ? 1 : 0
+  count = var.api_alb_dns != "" && length(local.all_domains) > 0 ? 1 : 0
 
-  zone_id = local.hosted_zone_id
-  name    = "api.${var.domain_name}"
+  zone_id = local.hosted_zone_ids[local.primary_domain_key]
+  name    = "api.${local.primary_domain.domain_name}"
   type    = "A"
 
   alias {

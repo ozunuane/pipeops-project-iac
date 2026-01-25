@@ -3,55 +3,77 @@
 # ====================================================================
 
 # ====================================================================
-# Route53 Outputs
+# Route53 Outputs - Multiple Domains
 # ====================================================================
 
-output "hosted_zone_id" {
-  description = "Route53 hosted zone ID"
-  value       = local.hosted_zone_id
+output "hosted_zone_ids" {
+  description = "Map of hosted zone IDs by domain name"
+  value       = local.hosted_zone_ids
 }
 
 output "hosted_zone_name_servers" {
-  description = "Name servers for the hosted zone (if created)"
-  value       = var.create_hosted_zone ? aws_route53_zone.main[0].name_servers : []
+  description = "Map of name servers by domain (only for created zones)"
+  value = {
+    for key, zone in aws_route53_zone.main : key => zone.name_servers
+  }
 }
 
-output "domain_name" {
-  description = "Domain name"
-  value       = var.domain_name
+output "domain_names" {
+  description = "List of all managed domain names"
+  value       = [for d in var.domain_names : d.domain_name]
+}
+
+output "primary_domain" {
+  description = "Primary domain name (first in the list)"
+  value       = length(var.domain_names) > 0 ? var.domain_names[0].domain_name : null
 }
 
 # ====================================================================
-# Certificate Outputs - Primary
+# Certificate Outputs - Primary Region (Multiple Domains)
 # ====================================================================
 
+output "primary_certificate_arns" {
+  description = "Map of ACM certificate ARNs in primary region by domain"
+  value = {
+    for key, cert in aws_acm_certificate.primary : key => cert.arn
+  }
+}
+
+output "primary_certificate_statuses" {
+  description = "Map of certificate statuses in primary region by domain"
+  value = {
+    for key, cert in aws_acm_certificate.primary : key => cert.status
+  }
+}
+
+# Legacy single-domain output for backward compatibility
 output "primary_certificate_arn" {
-  description = "ARN of the ACM certificate in primary region"
-  value       = var.create_certificates ? aws_acm_certificate.primary[0].arn : null
-}
-
-output "primary_certificate_status" {
-  description = "Status of the primary certificate"
-  value       = var.create_certificates ? aws_acm_certificate.primary[0].status : null
-}
-
-output "primary_certificate_domain_validation_options" {
-  description = "Domain validation options for primary certificate"
-  value       = var.create_certificates ? aws_acm_certificate.primary[0].domain_validation_options : []
+  description = "ARN of the ACM certificate in primary region (first domain)"
+  value       = length(aws_acm_certificate.primary) > 0 ? aws_acm_certificate.primary[local.primary_domain_key].arn : null
 }
 
 # ====================================================================
-# Certificate Outputs - DR
+# Certificate Outputs - DR Region (Multiple Domains)
 # ====================================================================
 
+output "dr_certificate_arns" {
+  description = "Map of ACM certificate ARNs in DR region by domain"
+  value = {
+    for key, cert in aws_acm_certificate.dr : key => cert.arn
+  }
+}
+
+output "dr_certificate_statuses" {
+  description = "Map of certificate statuses in DR region by domain"
+  value = {
+    for key, cert in aws_acm_certificate.dr : key => cert.status
+  }
+}
+
+# Legacy single-domain output for backward compatibility
 output "dr_certificate_arn" {
-  description = "ARN of the ACM certificate in DR region"
-  value       = var.create_certificates && var.enable_dr_cluster ? aws_acm_certificate.dr[0].arn : null
-}
-
-output "dr_certificate_status" {
-  description = "Status of the DR certificate"
-  value       = var.create_certificates && var.enable_dr_cluster ? aws_acm_certificate.dr[0].status : null
+  description = "ARN of the ACM certificate in DR region (first domain)"
+  value       = length(aws_acm_certificate.dr) > 0 ? aws_acm_certificate.dr[local.primary_domain_key].arn : null
 }
 
 # ====================================================================
@@ -72,24 +94,36 @@ output "dr_health_check_id" {
 # DNS Record Outputs
 # ====================================================================
 
+output "app_fqdns" {
+  description = "Map of FQDNs for the main application by domain"
+  value = {
+    for key, domain in local.all_domains : key => (
+      domain.app_subdomain != "" ? "${domain.app_subdomain}.${domain.domain_name}" : domain.domain_name
+    )
+  }
+}
+
+# Legacy single-domain output for backward compatibility
 output "app_fqdn" {
-  description = "FQDN for the main application"
-  value       = var.app_subdomain != "" ? "${var.app_subdomain}.${var.domain_name}" : var.domain_name
+  description = "FQDN for the main application (primary domain)"
+  value = length(local.all_domains) > 0 ? (
+    local.primary_domain.app_subdomain != "" ? "${local.primary_domain.app_subdomain}.${local.primary_domain.domain_name}" : local.primary_domain.domain_name
+  ) : null
 }
 
 output "argocd_fqdn" {
   description = "FQDN for ArgoCD"
-  value       = var.argocd_alb_dns != "" ? "argocd.${var.domain_name}" : null
+  value       = var.argocd_alb_dns != "" && length(local.all_domains) > 0 ? "argocd.${local.primary_domain.domain_name}" : null
 }
 
 output "grafana_fqdn" {
   description = "FQDN for Grafana"
-  value       = var.grafana_alb_dns != "" ? "grafana.${var.domain_name}" : null
+  value       = var.grafana_alb_dns != "" && length(local.all_domains) > 0 ? "grafana.${local.primary_domain.domain_name}" : null
 }
 
 output "api_fqdn" {
   description = "FQDN for API"
-  value       = var.api_alb_dns != "" ? "api.${var.domain_name}" : null
+  value       = var.api_alb_dns != "" && length(local.all_domains) > 0 ? "api.${local.primary_domain.domain_name}" : null
 }
 
 # ====================================================================
@@ -104,9 +138,9 @@ output "failover_enabled" {
 output "failover_status" {
   description = "Current failover configuration status"
   value = {
-    enabled              = var.enable_failover
-    primary_healthy      = var.enable_failover && var.primary_health_check_path != "" ? "Check health_check_id" : "N/A"
-    dr_healthy           = var.enable_failover && var.dr_health_check_path != "" && var.enable_dr_cluster ? "Check health_check_id" : "N/A"
+    enabled                = var.enable_failover
+    primary_healthy        = var.enable_failover && var.primary_health_check_path != "" ? "Check health_check_id" : "N/A"
+    dr_healthy             = var.enable_failover && var.dr_health_check_path != "" && var.enable_dr_cluster ? "Check health_check_id" : "N/A"
     primary_alb_configured = local.primary_alb_dns != ""
     dr_alb_configured      = local.dr_alb_dns != ""
   }
@@ -116,19 +150,53 @@ output "failover_status" {
 # Integration Outputs (for other workspaces)
 # ====================================================================
 
-output "certificate_arns" {
-  description = "Map of certificate ARNs by region"
+output "certificate_arns_by_domain" {
+  description = "Map of certificate ARNs by domain and region"
   value = {
-    primary = var.create_certificates ? aws_acm_certificate.primary[0].arn : null
-    dr      = var.create_certificates && var.enable_dr_cluster ? aws_acm_certificate.dr[0].arn : null
+    for key, domain in local.all_domains : key => {
+      primary = contains(keys(aws_acm_certificate.primary), key) ? aws_acm_certificate.primary[key].arn : null
+      dr      = contains(keys(aws_acm_certificate.dr), key) ? aws_acm_certificate.dr[key].arn : null
+    }
+  }
+}
+
+# Legacy output for backward compatibility
+output "certificate_arns" {
+  description = "Map of certificate ARNs by region (primary domain only)"
+  value = {
+    primary = length(aws_acm_certificate.primary) > 0 ? aws_acm_certificate.primary[local.primary_domain_key].arn : null
+    dr      = length(aws_acm_certificate.dr) > 0 ? aws_acm_certificate.dr[local.primary_domain_key].arn : null
   }
 }
 
 output "dns_configuration" {
   description = "DNS configuration for use in other workspaces"
   value = {
-    hosted_zone_id = local.hosted_zone_id
-    domain_name    = var.domain_name
-    app_subdomain  = var.app_subdomain
+    hosted_zone_ids = local.hosted_zone_ids
+    domain_names    = [for d in var.domain_names : d.domain_name]
+    primary_domain  = length(var.domain_names) > 0 ? var.domain_names[0].domain_name : null
+  }
+}
+
+# ====================================================================
+# Summary Output
+# ====================================================================
+
+output "summary" {
+  description = "Summary of all managed domains and resources"
+  value = {
+    domains = {
+      for key, domain in local.all_domains : key => {
+        domain_name    = domain.domain_name
+        hosted_zone_id = local.hosted_zone_ids[key]
+        primary_cert   = contains(keys(aws_acm_certificate.primary), key) ? aws_acm_certificate.primary[key].arn : null
+        dr_cert        = contains(keys(aws_acm_certificate.dr), key) ? aws_acm_certificate.dr[key].arn : null
+      }
+    }
+    failover = {
+      enabled              = var.enable_failover
+      primary_health_check = var.enable_failover && var.primary_health_check_path != "" ? aws_route53_health_check.primary[0].id : null
+      dr_health_check      = var.enable_failover && var.dr_health_check_path != "" && var.enable_dr_cluster ? aws_route53_health_check.dr[0].id : null
+    }
   }
 }

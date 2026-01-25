@@ -37,41 +37,70 @@ variable "enable_dr_cluster" {
 }
 
 # ====================================================================
-# DNS Configuration
+# DNS Configuration - Multiple Domains
 # ====================================================================
 
+variable "domains" {
+  description = "Map of domains to configure with their settings"
+  type = map(object({
+    domain_name        = string       # Root domain (e.g., example.com)
+    create_hosted_zone = bool         # Create new zone or use existing
+    create_certificate = bool         # Create ACM certificates
+    certificate_san    = list(string) # Subject Alternative Names
+    app_subdomain      = string       # Main app subdomain (e.g., "app" for app.example.com)
+    primary            = bool         # Is this the primary domain for failover
+  }))
+  default = {}
+  # Example:
+  # domains = {
+  #   "example" = {
+  #     domain_name        = "example.com"
+  #     create_hosted_zone = false
+  #     create_certificate = true
+  #     certificate_san    = ["*.example.com"]
+  #     app_subdomain      = "app"
+  #     primary            = true
+  #   }
+  #   "example-io" = {
+  #     domain_name        = "example.io"
+  #     create_hosted_zone = true
+  #     create_certificate = true
+  #     certificate_san    = ["*.example.io"]
+  #     app_subdomain      = ""
+  #     primary            = false
+  #   }
+  # }
+}
+
+# Legacy single domain support (deprecated, use 'domains' instead)
 variable "domain_name" {
-  description = "Root domain name (e.g., example.com)"
+  description = "DEPRECATED: Use 'domains' variable instead. Root domain name."
   type        = string
+  default     = ""
 }
 
 variable "create_hosted_zone" {
-  description = "Create a new Route53 hosted zone (false to use existing)"
+  description = "DEPRECATED: Use 'domains' variable instead."
   type        = bool
   default     = false
 }
 
 variable "app_subdomain" {
-  description = "Subdomain for the main application (empty for apex domain)"
+  description = "DEPRECATED: Use 'domains' variable instead."
   type        = string
   default     = "app"
 }
 
-# ====================================================================
-# Certificate Configuration
-# ====================================================================
-
 variable "create_certificates" {
-  description = "Create ACM certificates"
+  description = "DEPRECATED: Use 'domains' variable instead."
   type        = bool
   default     = true
 }
 
 variable "certificate_san" {
-  description = "Subject Alternative Names for certificates"
+  description = "DEPRECATED: Use 'domains' variable instead."
   type        = list(string)
   default     = []
-  # Example: ["*.example.com", "api.example.com"]
 }
 
 # ====================================================================
