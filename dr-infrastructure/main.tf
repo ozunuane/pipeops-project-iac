@@ -115,88 +115,9 @@ provider "helm" {
 # ====================================================================
 # DR AWS Load Balancer Controller
 # ====================================================================
-
-resource "helm_release" "dr_aws_load_balancer_controller" {
-  name       = "aws-load-balancer-controller"
-  repository = "https://aws.github.io/eks-charts"
-  chart      = "aws-load-balancer-controller"
-  version    = "1.6.2"
-  namespace  = "kube-system"
-
-  set {
-    name  = "clusterName"
-    value = module.dr_eks.cluster_name
-  }
-
-  set {
-    name  = "serviceAccount.create"
-    value = "true"
-  }
-
-  set {
-    name  = "serviceAccount.name"
-    value = "aws-load-balancer-controller"
-  }
-
-  set {
-    name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-    value = aws_iam_role.dr_aws_load_balancer_controller.arn
-  }
-
-  set {
-    name  = "region"
-    value = var.dr_region
-  }
-
-  set {
-    name  = "vpcId"
-    value = module.dr_vpc.vpc_id
-  }
-
-  depends_on = [
-    module.dr_eks,
-    aws_iam_role.dr_aws_load_balancer_controller
-  ]
-}
-
-# ====================================================================
-# DR IAM Role for AWS Load Balancer Controller
-# ====================================================================
-
-resource "aws_iam_role" "dr_aws_load_balancer_controller" {
-  name = "${local.dr_cluster_name}-aws-load-balancer-controller"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Federated = module.dr_eks.oidc_provider_arn
-        }
-        Condition = {
-          StringEquals = {
-            "${replace(module.dr_eks.cluster_oidc_issuer_url, "https://", "")}:sub" : "system:serviceaccount:kube-system:aws-load-balancer-controller"
-            "${replace(module.dr_eks.cluster_oidc_issuer_url, "https://", "")}:aud" : "sts.amazonaws.com"
-          }
-        }
-      }
-    ]
-  })
-
-  tags = merge(var.tags, {
-    DisasterRecovery = "true"
-    DRRegion         = var.dr_region
-  })
-}
-
-resource "aws_iam_role_policy" "dr_aws_load_balancer_controller" {
-  name = "${local.dr_cluster_name}-aws-load-balancer-controller"
-  role = aws_iam_role.dr_aws_load_balancer_controller.id
-
-  policy = file("${path.module}/../policies/aws-load-balancer-controller-iam-policy.json")
-}
+# NOTE: With EKS Auto Mode, the AWS Load Balancer Controller is managed
+# automatically via kubernetes_network_config { elastic_load_balancing { enabled = true } }
+# No manual Helm installation or IAM roles required.
 
 # ====================================================================
 # DR External Secrets Operator
@@ -290,80 +211,19 @@ resource "aws_iam_role_policy" "dr_external_secrets" {
 # ====================================================================
 # DR EKS Add-ons
 # ====================================================================
-
-resource "aws_eks_addon" "dr_coredns" {
-  cluster_name                = module.dr_eks.cluster_name
-  addon_name                  = "coredns"
-  addon_version               = "v1.10.1-eksbuild.5"
-  resolve_conflicts_on_create = "OVERWRITE"
-
-  depends_on = [module.dr_eks]
-}
-
-resource "aws_eks_addon" "dr_kube_proxy" {
-  cluster_name                = module.dr_eks.cluster_name
-  addon_name                  = "kube-proxy"
-  addon_version               = "v1.28.2-eksbuild.2"
-  resolve_conflicts_on_create = "OVERWRITE"
-
-  depends_on = [module.dr_eks]
-}
-
-resource "aws_eks_addon" "dr_vpc_cni" {
-  cluster_name                = module.dr_eks.cluster_name
-  addon_name                  = "vpc-cni"
-  addon_version               = "v1.15.4-eksbuild.1"
-  resolve_conflicts_on_create = "OVERWRITE"
-
-  depends_on = [module.dr_eks]
-}
-
-resource "aws_eks_addon" "dr_ebs_csi_driver" {
-  cluster_name                = module.dr_eks.cluster_name
-  addon_name                  = "aws-ebs-csi-driver"
-  addon_version               = "v1.25.0-eksbuild.1"
-  resolve_conflicts_on_create = "OVERWRITE"
-  service_account_role_arn    = aws_iam_role.dr_ebs_csi_driver.arn
-
-  depends_on = [module.dr_eks]
-}
-
-# ====================================================================
-# DR IAM Role for EBS CSI Driver
-# ====================================================================
-
-resource "aws_iam_role" "dr_ebs_csi_driver" {
-  name = "${local.dr_cluster_name}-ebs-csi-driver"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Federated = module.dr_eks.oidc_provider_arn
-        }
-        Condition = {
-          StringEquals = {
-            "${replace(module.dr_eks.cluster_oidc_issuer_url, "https://", "")}:sub" : "system:serviceaccount:kube-system:ebs-csi-controller-sa"
-            "${replace(module.dr_eks.cluster_oidc_issuer_url, "https://", "")}:aud" : "sts.amazonaws.com"
-          }
-        }
-      }
-    ]
-  })
-
-  tags = merge(var.tags, {
-    DisasterRecovery = "true"
-    DRRegion         = var.dr_region
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "dr_ebs_csi_driver" {
-  role       = aws_iam_role.dr_ebs_csi_driver.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/Amazon_EBS_CSI_DriverPolicy"
-}
+# NOTE: With EKS Auto Mode (kubernetes_version 1.33+), the following
+# add-ons are managed automatically and should NOT be manually installed:
+# - coredns
+# - kube-proxy
+# - vpc-cni
+# - aws-ebs-csi-driver
+# - aws-load-balancer-controller
+#
+# EKS Auto Mode is configured in the EKS module via:
+# - compute_config { enabled = true, node_pools = [...] }
+# - storage_config { block_storage { enabled = true } }
+# - kubernetes_network_config { elastic_load_balancing { enabled = true } }
+# - bootstrap_self_managed_addons = false
 
 # ====================================================================
 # DR RDS Read Replica
@@ -373,7 +233,7 @@ resource "aws_iam_role_policy_attachment" "dr_ebs_csi_driver" {
 
 # Security group for DR RDS replica
 resource "aws_security_group" "dr_rds" {
-  count = var.enable_rds_dr_replica && var.primary_rds_arn != "" ? 1 : 0
+  count = var.enable_rds_dr_replica && local.primary_rds_exists ? 1 : 0
 
   name        = "${var.project_name}-${var.primary_environment}-rds-dr-sg"
   description = "Security group for DR RDS replica"
@@ -419,19 +279,19 @@ resource "aws_security_group" "dr_rds" {
 # Option 1: Use the KMS key created by primary workspace for cross-region backups
 # Option 2: Create a new KMS key if primary backup key is not provided
 
-# Try to look up the primary workspace's DR KMS key by alias
+# Try to look up the primary workspace's DR KMS key by alias (fallback if not in remote state)
 data "aws_kms_key" "primary_backup_key" {
-  count = var.primary_backup_kms_key_arn == "" && var.enable_rds_dr_replica ? 1 : 0
+  count = local.primary_dr_kms_key_arn == "" && var.enable_rds_dr_replica ? 1 : 0
 
   # This is the alias created by the primary workspace for cross-region backups
   key_id = "alias/${var.project_name}-${var.primary_environment}-rds-dr"
 }
 
 # Create a new KMS key only if:
-# 1. No primary_backup_kms_key_arn is provided, AND
-# 2. The data source lookup failed (key doesn't exist)
+# 1. No KMS key found from remote state or variable, AND
+# 2. The alias lookup also failed
 resource "aws_kms_key" "dr_rds" {
-  count = var.enable_rds_dr_replica && var.primary_rds_arn != "" && var.primary_backup_kms_key_arn == "" && length(data.aws_kms_key.primary_backup_key) == 0 ? 1 : 0
+  count = var.enable_rds_dr_replica && local.primary_rds_exists && local.primary_dr_kms_key_arn == "" && length(data.aws_kms_key.primary_backup_key) == 0 ? 1 : 0
 
   description             = "KMS key for DR RDS encryption in ${var.dr_region}"
   deletion_window_in_days = 7
@@ -445,16 +305,17 @@ resource "aws_kms_key" "dr_rds" {
 }
 
 resource "aws_kms_alias" "dr_rds" {
-  count = var.enable_rds_dr_replica && var.primary_rds_arn != "" && var.primary_backup_kms_key_arn == "" && length(data.aws_kms_key.primary_backup_key) == 0 ? 1 : 0
+  count = var.enable_rds_dr_replica && local.primary_rds_exists && local.primary_dr_kms_key_arn == "" && length(data.aws_kms_key.primary_backup_key) == 0 ? 1 : 0
 
   name          = "alias/${var.project_name}-${var.primary_environment}-rds-dr-new"
   target_key_id = aws_kms_key.dr_rds[0].key_id
 }
 
 # Local to determine which KMS key to use for DR RDS
+# Priority: remote state > variable > alias lookup > create new
 locals {
   dr_rds_kms_key_arn = (
-    var.primary_backup_kms_key_arn != "" ? var.primary_backup_kms_key_arn : (
+    local.primary_dr_kms_key_arn != "" ? local.primary_dr_kms_key_arn : (
       length(data.aws_kms_key.primary_backup_key) > 0 ? data.aws_kms_key.primary_backup_key[0].arn : (
         length(aws_kms_key.dr_rds) > 0 ? aws_kms_key.dr_rds[0].arn : null
       )
@@ -464,7 +325,7 @@ locals {
 
 # IAM role for DR RDS monitoring
 resource "aws_iam_role" "dr_rds_monitoring" {
-  count = var.enable_rds_dr_replica && var.primary_rds_arn != "" ? 1 : 0
+  count = var.enable_rds_dr_replica && local.primary_rds_exists ? 1 : 0
 
   name = "${var.project_name}-${var.primary_environment}-rds-dr-monitoring"
 
@@ -488,7 +349,7 @@ resource "aws_iam_role" "dr_rds_monitoring" {
 }
 
 resource "aws_iam_role_policy_attachment" "dr_rds_monitoring" {
-  count = var.enable_rds_dr_replica && var.primary_rds_arn != "" ? 1 : 0
+  count = var.enable_rds_dr_replica && local.primary_rds_exists ? 1 : 0
 
   role       = aws_iam_role.dr_rds_monitoring[0].name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
@@ -496,10 +357,10 @@ resource "aws_iam_role_policy_attachment" "dr_rds_monitoring" {
 
 # DR RDS Read Replica
 resource "aws_db_instance" "dr_replica" {
-  count = var.enable_rds_dr_replica && var.primary_rds_arn != "" ? 1 : 0
+  count = var.enable_rds_dr_replica && local.primary_rds_exists ? 1 : 0
 
   identifier          = "${var.project_name}-${var.primary_environment}-postgres-dr"
-  replicate_source_db = var.primary_rds_arn
+  replicate_source_db = local.primary_rds_arn
   instance_class      = var.dr_rds_instance_class
 
   # Multi-AZ in DR region for additional redundancy

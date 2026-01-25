@@ -1,0 +1,122 @@
+# ==============================================================================
+# AFL GitHub Repository Credentials
+# ==============================================================================
+
+# CBAAS argocd Service Repository
+apiVersion: v1
+kind: Secret
+metadata:
+  name: afl-arocd-repo-cbaas-postings
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+    service: cbaas-argocd
+    project: afl-cbaas-services
+type: Opaque
+stringData:
+  type: git
+  name: cbaas.argocd.git
+  url: git@github.com:Africa-FinTech-Ltd/afl-devops-argocd.git
+  insecure: "true"
+  enableLfs: "true"
+  sshPrivateKey: |
+    -----BEGIN OPENSSH PRIVATE KEY-----
+
+    -----END OPENSSH PRIVATE KEY-----
+
+# ==============================================================================
+# Helm Repository Credentials
+# ==============================================================================
+---
+# Bitnami Helm Repository
+apiVersion: v1
+kind: Secret
+metadata:
+  name: bitnami-helm-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+    repo-type: helm
+type: Opaque
+stringData:
+  type: helm
+  name: bitnami
+  url: https://charts.bitnami.com/bitnami
+---
+# Prometheus Community Helm Repository
+apiVersion: v1
+kind: Secret
+metadata:
+  name: prometheus-helm-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+    repo-type: helm
+type: Opaque
+stringData:
+  type: helm
+  name: prometheus-community
+  url: https://prometheus-community.github.io/helm-charts
+---
+# Grafana Helm Repository
+apiVersion: v1
+kind: Secret
+metadata:
+  name: grafana-helm-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+    repo-type: helm
+type: Opaque
+stringData:
+  type: helm
+  name: grafana
+  url: https://grafana.github.io/helm-charts
+---
+# Ingress NGINX Helm Repository
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ingress-nginx-helm-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+    repo-type: helm
+type: Opaque
+stringData:
+  type: helm
+  name: ingress-nginx
+  url: https://kubernetes.github.io/ingress-nginx
+---
+# Jetstack Helm Repository (Cert-Manager)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: jetstack-helm-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+    repo-type: helm
+type: Opaque
+stringData:
+  type: helm
+  name: jetstack
+  url: https://charts.jetstack.io
+
+
+  
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-image-updater-config
+  namespace: argocd
+data:
+  registries.conf: |-
+    registries:
+      - name: SWR-HUAWEI
+        api_url: https://swr.af-south-1.myhuaweicloud.com
+        prefix: swr.af-south-1.myhuaweicloud.com
+        ping: yes
+        insecure: no
+        credentials: pullsecret:argocd/registry-secret

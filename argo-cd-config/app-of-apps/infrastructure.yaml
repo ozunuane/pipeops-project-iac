@@ -1,0 +1,92 @@
+# apiVersion: argoproj.io/v1alpha1
+# kind: Application
+# metadata:
+#   name: prometheus-stack
+#   namespace: argocd
+#   labels:
+#     app.kubernetes.io/name: prometheus-stack
+#     app.kubernetes.io/part-of: afl-infrastructure
+# spec:
+#   project: afl-infrastructure
+#   source:
+#     repoURL: https://prometheus-community.github.io/helm-charts
+#     chart: kube-prometheus-stack
+#     targetRevision: "45.7.1"
+#     helm:
+#       values: |
+#         grafana:
+#           enabled: true
+#           adminPassword: "admin123"
+#           ingress:
+#             enabled: true
+#             hosts:
+#               - grafana-cbaas.dev.inafl.com
+#         prometheus:
+#           prometheusSpec:
+#             retention: 30d
+#             storageSpec:
+#               volumeClaimTemplate:
+#                 spec:
+#                   storageClassName: "csi-disk"
+#                   accessModes: ["ReadWriteOnce"]
+#                   resources:
+#                     requests:
+#                       storage: 50Gi
+#   destination:
+#     server: https://kubernetes.default.svc
+#     namespace: monitoring
+#   syncPolicy:
+#     automated:
+#       prune: true
+#       selfHeal: true
+#     syncOptions:
+#       - CreateNamespace=true
+#       - ServerSideApply=true
+#     retry:
+#       limit: 3
+#       backoff:
+#         duration: 5s
+#         factor: 2
+#         maxDuration: 3m
+# ---
+# apiVersion: argoproj.io/v1alpha1
+# kind: Application
+# metadata:
+#   name: ingress-nginx
+#   namespace: argocd
+#   labels:
+#     app.kubernetes.io/name: ingress-nginx
+#     app.kubernetes.io/part-of: afl-infrastructure
+# spec:
+#   project: afl-infrastructure
+#   source:
+#     repoURL: https://kubernetes.github.io/ingress-nginx
+#     chart: ingress-nginx
+#     targetRevision: "4.5.2"
+#     helm:
+#       values: |
+#         controller:
+#           service:
+#             type: LoadBalancer
+#             annotations:
+#               kubernetes.io/elb.class: performance
+#               kubernetes.io/elb.port: "80,443"
+#           config:
+#             proxy-body-size: "50m"
+#             proxy-read-timeout: "3600"
+#             proxy-send-timeout: "3600"
+#   destination:
+#     server: https://kubernetes.default.svc
+#     namespace: ingress-nginx
+#   syncPolicy:
+#     automated:
+#       prune: true
+#       selfHeal: true
+#     syncOptions:
+#       - CreateNamespace=true
+#     retry:
+#       limit: 3
+#       backoff:
+#         duration: 5s
+#         factor: 2
+#         maxDuration: 3m

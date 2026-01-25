@@ -37,12 +37,26 @@ db_dr_instance_class           = "db.t4g.medium"
 db_dr_multi_az                 = false
 db_enable_cross_region_backups = false # ❌ Disabled for dev
 
+# ECR Repositories
+ecr_repository_names = [
+  "titanic-api"
+
+]
+ecr_enable_replication = false # No DR replication in dev
+
 # Feature Flags
 enable_argocd     = true
 enable_monitoring = false # Disable monitoring in dev to save costs
 enable_logging    = false # Disable logging in dev
 
 # Tags
+# AWS Backup Configuration (minimal for dev)
+enable_eks_backup               = true
+backup_schedule                 = "cron(0 6 * * ? *)" # Daily at 6:00 AM UTC
+backup_retention_days           = 7                   # Keep backups for 7 days only
+backup_cold_storage_after       = 0                   # Disable cold storage
+enable_backup_cross_region_copy = false               # No cross-region copy for dev
+
 tags = {
   Project      = "pipeops"
   Environment  = "dev"
