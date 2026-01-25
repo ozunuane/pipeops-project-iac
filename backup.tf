@@ -84,8 +84,8 @@ resource "aws_backup_plan" "eks_daily" {
     schedule          = "cron(0 6 ? * SUN *)" # 6:00 AM UTC every Sunday
 
     lifecycle {
-      cold_storage_after = 30  # Move to cold storage after 30 days
-      delete_after       = 90  # Keep weekly backups for 90 days
+      cold_storage_after = 30 # Move to cold storage after 30 days
+      delete_after       = 90 # Keep weekly backups for 90 days
     }
 
     recovery_point_tags = {
