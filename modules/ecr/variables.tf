@@ -28,9 +28,9 @@ variable "repository_names" {
 }
 
 variable "image_tag_mutability" {
-  description = "Image tag mutability (MUTABLE or IMMUTABLE)"
+  description = "Image tag mutability (MUTABLE or IMMUTABLE). IMMUTABLE recommended for security."
   type        = string
-  default     = "MUTABLE"
+  default     = "IMMUTABLE"
 }
 
 variable "scan_on_push" {

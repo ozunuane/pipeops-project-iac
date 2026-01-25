@@ -306,9 +306,9 @@ variable "ecr_repository_names" {
 }
 
 variable "ecr_image_tag_mutability" {
-  description = "Image tag mutability for all repositories (MUTABLE or IMMUTABLE)"
+  description = "Image tag mutability for all repositories (IMMUTABLE recommended for security)"
   type        = string
-  default     = "MUTABLE"
+  default     = "IMMUTABLE"
 }
 
 variable "ecr_scan_on_push" {
