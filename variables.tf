@@ -128,10 +128,14 @@ variable "enable_aws_load_balancer_controller_addon" {
   default     = false
 }
 
-variable "cluster_access_iam_principal_arns" {
-  description = "IAM user/role ARNs to grant EKS cluster admin access (kubectl, Helm). Use 'aws sts get-caller-identity' to get your ARN. Prefer IAM users/roles over root."
-  type        = list(string)
-  default     = []
+variable "cluster_access_entries" {
+  description = "EKS access entries: key = label, value = { principal_arn, level, namespaces? }. Levels: admin (full), devops (edit cluster), dev (edit), qa (view-only). Optional namespaces = list for dev/qa to scope access."
+  type = map(object({
+    principal_arn = string
+    level         = string # admin | devops | dev | qa
+    namespaces    = optional(list(string))
+  }))
+  default = {}
 }
 
 variable "db_instance_class" {

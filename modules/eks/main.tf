@@ -450,9 +450,9 @@ resource "aws_iam_role" "vpc_cni" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
+      Effect    = "Allow"
       Principal = { Federated = aws_iam_openid_connect_provider.cluster.arn }
-      Action = "sts:AssumeRoleWithWebIdentity"
+      Action    = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
           "${local.oidc_issuer_host}:sub" = "system:serviceaccount:kube-system:aws-node"
@@ -474,9 +474,9 @@ resource "aws_iam_role" "ebs_csi" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
+      Effect    = "Allow"
       Principal = { Federated = aws_iam_openid_connect_provider.cluster.arn }
-      Action = "sts:AssumeRoleWithWebIdentity"
+      Action    = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
           "${local.oidc_issuer_host}:sub" = "system:serviceaccount:kube-system:ebs-csi-controller-sa"
@@ -498,9 +498,9 @@ resource "aws_iam_role" "aws_load_balancer_controller" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
+      Effect    = "Allow"
       Principal = { Federated = aws_iam_openid_connect_provider.cluster.arn }
-      Action = "sts:AssumeRoleWithWebIdentity"
+      Action    = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
           "${local.oidc_issuer_host}:sub" = "system:serviceaccount:kube-system:aws-load-balancer-controller"
@@ -576,9 +576,9 @@ resource "aws_iam_role" "karpenter" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
+      Effect    = "Allow"
       Principal = { Federated = aws_iam_openid_connect_provider.cluster.arn }
-      Action = "sts:AssumeRoleWithWebIdentity"
+      Action    = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
           "${local.oidc_issuer_host}:sub" = "system:serviceaccount:karpenter:karpenter"
@@ -633,8 +633,8 @@ data "aws_iam_policy_document" "karpenter" {
     }
   }
   statement {
-    sid    = "EC2Tagged"
-    effect = "Allow"
+    sid     = "EC2Tagged"
+    effect  = "Allow"
     actions = ["ec2:CreateTags"]
     resources = [
       "arn:aws:ec2:*:*:fleet/*",
@@ -649,9 +649,9 @@ data "aws_iam_policy_document" "karpenter" {
     }
   }
   statement {
-    sid    = "EC2Delete"
-    effect = "Allow"
-    actions = ["ec2:TerminateInstances", "ec2:DeleteLaunchTemplate"]
+    sid       = "EC2Delete"
+    effect    = "Allow"
+    actions   = ["ec2:TerminateInstances", "ec2:DeleteLaunchTemplate"]
     resources = ["*"]
     condition {
       test     = "StringLike"
@@ -660,9 +660,9 @@ data "aws_iam_policy_document" "karpenter" {
     }
   }
   statement {
-    sid    = "PassRole"
-    effect = "Allow"
-    actions = ["iam:PassRole"]
+    sid       = "PassRole"
+    effect    = "Allow"
+    actions   = ["iam:PassRole"]
     resources = [aws_iam_role.node.arn]
     condition {
       test     = "StringEquals"

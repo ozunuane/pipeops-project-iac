@@ -18,16 +18,32 @@ database_subnet_cidrs = ["10.0.201.0/24", "10.0.202.0/24", "10.0.203.0/24"]
 kubernetes_version = "1.33"
 cluster_exists     = true # EKS cluster is running - enables Helm resources and backups
 
-# IAM principals with kubectl/admin access. Run: aws sts get-caller-identity --query Arn --output text
-cluster_access_iam_principal_arns = ["arn:aws:iam::742890864997:root"]
+# EKS access by level: admin (full) | devops | dev (edit) | qa (view-only). Optional namespaces = scope dev/qa.
+# Level -> policy: admin=ClusterAdmin, devops/dev=Edit, qa=View. Add namespaces for dev/qa to restrict scope.
+# Keep root as admin to run 'make bootstrap-eks-access' (Terraform uses root; avoids k8s refresh Forbidden).
+cluster_access_entries = {
+  "root" = {
+    principal_arn = "arn:aws:iam::742890864997:root"
+    level         = "admin"
+  }
+  "ozimede-cli" = {
+    principal_arn = "arn:aws:iam::742890864997:user/ozimede-cli"
+    level         = "admin"
+  }
+  # "devops-user" = { principal_arn = "arn:aws:iam::742890864997:user/devops-user", level = "devops" }
+  # "dev-user"    = { principal_arn = "arn:aws:iam::742890864997:user/dev-user", level = "dev" }
+  # "qa-user"     = { principal_arn = "arn:aws:iam::742890864997:user/qa-user", level = "qa" }
+  # Namespace-scoped example (dev only in dev/default):
+  # "dev-ns" = { principal_arn = "arn:aws:iam::742890864997:user/dev-user", level = "dev", namespaces = ["dev", "default"] }
+}
 
 # RDS Configuration - PRODUCTION with Multi-AZ + Read Replicas
 db_instance_class              = "db.m5d.large"               # Larger instance for production
 db_postgres_version            = "16.6"                       # PostgreSQL 16.6 - available in all AWS regions
 db_allocated_storage           = 400                          # 400 GB initial storage (minimum for provisioned IOPS)
 db_backup_retention            = 30                           # 30 days backup retention
-db_multi_az                    = false                         # ✅ Multi-AZ ENABLED - Critical for HA
-db_create_read_replica         = false                         # ✅ Read replicas ENABLED
+db_multi_az                    = false                        # ✅ Multi-AZ ENABLED - Critical for HA
+db_create_read_replica         = false                        # ✅ Read replicas ENABLED
 db_read_replica_count          = 0                            # 2 read replicas for load distribution
 db_read_replica_instance_class = "db.m5d.large"               # Read replicas can be smaller
 db_replica_availability_zones  = ["us-west-2b", "us-west-2c"] # Spread across AZs
@@ -41,7 +57,7 @@ dr_region = "us-east-1" # DR region (different from us-west-2)
 # Note: DR RDS replica is now managed by DR workspace (dr-infrastructure/)
 # Primary workspace only manages cross-region backup replication
 db_enable_cross_region_backups = false # ✅ Replicate backups to DR region
-db_dr_kms_key_id               = ""   # Optional: KMS key for backup encryption
+db_dr_kms_key_id               = ""    # Optional: KMS key for backup encryption
 
 # DR EKS Cluster Configuration (Production Only)
 dr_vpc_cidr                             = "10.1.0.0/16"
@@ -60,7 +76,7 @@ ecr_repository_names = [
   "titanic-api",
   "karpenter"
 ]
-ecr_enable_replication  = false          # ✅ Enable DR replication for prod
+ecr_enable_replication  = false         # ✅ Enable DR replication for prod
 ecr_replication_regions = ["us-east-1"] # Replicate to DR region
 
 # Feature Flags

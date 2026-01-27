@@ -8,9 +8,9 @@
 
 # SQS Queue for Karpenter spot interruption handling
 resource "aws_sqs_queue" "karpenter" {
-  count  = var.cluster_exists ? 1 : 0
-  name   = "${local.cluster_name}-karpenter-interruption"
-  tags   = merge(var.tags, { "karpenter.sh/cluster" = local.cluster_name })
+  count                     = var.cluster_exists ? 1 : 0
+  name                      = "${local.cluster_name}-karpenter-interruption"
+  tags                      = merge(var.tags, { "karpenter.sh/cluster" = local.cluster_name })
   message_retention_seconds = 300
   receive_wait_time_seconds = 20
 }
@@ -19,7 +19,7 @@ resource "aws_sqs_queue_policy" "karpenter" {
   count     = var.cluster_exists ? 1 : 0
   queue_url = aws_sqs_queue.karpenter[0].id
   policy = jsonencode({
-    Version   = "2012-10-17"
+    Version = "2012-10-17"
     Statement = [
       {
         Effect    = "Allow"
@@ -39,9 +39,9 @@ resource "aws_sqs_queue_policy" "karpenter" {
 
 # EventBridge rule for EC2 Spot Instance Interruption Warning
 resource "aws_cloudwatch_event_rule" "karpenter_interruption" {
-  count  = var.cluster_exists ? 1 : 0
-  name   = "${local.cluster_name}-karpenter-interruption"
-  tags   = var.tags
+  count = var.cluster_exists ? 1 : 0
+  name  = "${local.cluster_name}-karpenter-interruption"
+  tags  = var.tags
   event_pattern = jsonencode({
     source      = ["aws.ec2"]
     detail-type = ["EC2 Spot Instance Interruption Warning"]
@@ -56,11 +56,11 @@ resource "aws_cloudwatch_event_target" "karpenter_interruption" {
 
 # IAM policy for Karpenter to consume SQS (spot interruptions)
 resource "aws_iam_role_policy" "karpenter_interruption" {
-  count  = var.cluster_exists ? 1 : 0
-  name   = "${local.cluster_name}-karpenter-interruption"
-  role   = module.eks.karpenter_role_name
+  count = var.cluster_exists ? 1 : 0
+  name  = "${local.cluster_name}-karpenter-interruption"
+  role  = module.eks.karpenter_role_name
   policy = jsonencode({
-    Version   = "2012-10-17"
+    Version = "2012-10-17"
     Statement = [
       {
         Effect   = "Allow"
@@ -118,10 +118,10 @@ resource "kubectl_manifest" "karpenter_nodeclass" {
     kind       = "EC2NodeClass"
     metadata   = { name = "default" }
     spec = {
-      amiFamily        = "AL2"
+      amiFamily = "AL2"
       # v1 requires amiSelectorTerms. Pin alias in prod, e.g. al2@v20240807 (see AWS Karpenter best practices).
-      amiSelectorTerms = [{ alias = "al2@latest" }]
-      role      = module.eks.node_instance_profile_name
+      amiSelectorTerms           = [{ alias = "al2@latest" }]
+      role                       = module.eks.node_instance_profile_name
       subnetSelectorTerms        = [{ tags = { "karpenter.sh/discovery" = local.cluster_name } }]
       securityGroupSelectorTerms = [{ tags = { "karpenter.sh/discovery" = local.cluster_name } }]
     }
