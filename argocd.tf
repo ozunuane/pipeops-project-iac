@@ -127,5 +127,5 @@ resource "helm_release" "argocd" {
     })
   ]
 
-  depends_on = [module.eks]
+  depends_on = [module.eks, aws_eks_access_policy_association.cluster_scoped]
 }

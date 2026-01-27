@@ -287,7 +287,7 @@ resource "aws_iam_openid_connect_provider" "cluster" {
 }
 
 # ==========================================
-# EKS Addons (VPC CNI, CoreDNS, kube-proxy, metrics-server, EBS CSI, AWS LB Controller)
+# EKS Addons (VPC CNI, CoreDNS, kube-proxy, EBS CSI, AWS LB Controller)
 # ==========================================
 # Versions: aws_eks_addon_version (most_recent) on create. lifecycle ignore_changes
 # [addon_version] prevents upgrades on every apply. To upgrade: taint addon, then apply.
@@ -326,12 +326,6 @@ data "aws_eks_addon_version" "ebs_csi" {
 data "aws_eks_addon_version" "aws_load_balancer_controller" {
   count              = local.enable_lb_controller_addon ? 1 : 0
   addon_name         = "aws-load-balancer-controller"
-  kubernetes_version = var.kubernetes_version
-  most_recent        = true
-}
-
-data "aws_eks_addon_version" "metrics_server" {
-  addon_name         = "metrics-server"
   kubernetes_version = var.kubernetes_version
   most_recent        = true
 }
@@ -388,20 +382,6 @@ resource "aws_eks_addon" "kube_proxy" {
   }
 }
 
-resource "aws_eks_addon" "metrics_server" {
-  cluster_name                = aws_eks_cluster.main.name
-  addon_name                  = "metrics-server"
-  addon_version               = data.aws_eks_addon_version.metrics_server.version
-  resolve_conflicts_on_create = "OVERWRITE"
-  resolve_conflicts_on_update = "OVERWRITE"
-  tags                        = var.tags
-  depends_on                  = [aws_eks_cluster.main, aws_eks_node_group.main]
-
-  lifecycle {
-    ignore_changes = [addon_version]
-  }
-}
-
 resource "aws_eks_addon" "ebs_csi" {
   cluster_name                = aws_eks_cluster.main.name
   addon_name                  = "aws-ebs-csi-driver"
@@ -450,9 +430,9 @@ resource "aws_iam_role" "vpc_cni" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect    = "Allow"
+      Effect = "Allow"
       Principal = { Federated = aws_iam_openid_connect_provider.cluster.arn }
-      Action    = "sts:AssumeRoleWithWebIdentity"
+      Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
           "${local.oidc_issuer_host}:sub" = "system:serviceaccount:kube-system:aws-node"
@@ -474,9 +454,9 @@ resource "aws_iam_role" "ebs_csi" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect    = "Allow"
+      Effect = "Allow"
       Principal = { Federated = aws_iam_openid_connect_provider.cluster.arn }
-      Action    = "sts:AssumeRoleWithWebIdentity"
+      Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
           "${local.oidc_issuer_host}:sub" = "system:serviceaccount:kube-system:ebs-csi-controller-sa"
@@ -498,9 +478,9 @@ resource "aws_iam_role" "aws_load_balancer_controller" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect    = "Allow"
+      Effect = "Allow"
       Principal = { Federated = aws_iam_openid_connect_provider.cluster.arn }
-      Action    = "sts:AssumeRoleWithWebIdentity"
+      Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
           "${local.oidc_issuer_host}:sub" = "system:serviceaccount:kube-system:aws-load-balancer-controller"
@@ -576,9 +556,9 @@ resource "aws_iam_role" "karpenter" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect    = "Allow"
+      Effect = "Allow"
       Principal = { Federated = aws_iam_openid_connect_provider.cluster.arn }
-      Action    = "sts:AssumeRoleWithWebIdentity"
+      Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
           "${local.oidc_issuer_host}:sub" = "system:serviceaccount:karpenter:karpenter"
@@ -597,11 +577,13 @@ resource "aws_iam_role_policy" "karpenter" {
 }
 
 data "aws_iam_policy_document" "karpenter" {
-  # Read-only Describe* calls don't send request tags; separate statement, no condition.
   statement {
-    sid    = "EC2Describe"
+    sid    = "EC2Scoped"
     effect = "Allow"
     actions = [
+      "ec2:CreateFleet",
+      "ec2:CreateLaunchTemplate",
+      "ec2:CreateTags",
       "ec2:DescribeAvailabilityZones",
       "ec2:DescribeImages",
       "ec2:DescribeInstances",
@@ -610,17 +592,7 @@ data "aws_iam_policy_document" "karpenter" {
       "ec2:DescribeLaunchTemplates",
       "ec2:DescribeSecurityGroups",
       "ec2:DescribeSpotPriceHistory",
-      "ec2:DescribeSubnets"
-    ]
-    resources = ["*"]
-  }
-  statement {
-    sid    = "EC2Scoped"
-    effect = "Allow"
-    actions = [
-      "ec2:CreateFleet",
-      "ec2:CreateLaunchTemplate",
-      "ec2:CreateTags",
+      "ec2:DescribeSubnets",
       "ec2:DeleteLaunchTemplate",
       "ec2:RunInstances",
       "ec2:TerminateInstances"
@@ -633,8 +605,8 @@ data "aws_iam_policy_document" "karpenter" {
     }
   }
   statement {
-    sid     = "EC2Tagged"
-    effect  = "Allow"
+    sid    = "EC2Tagged"
+    effect = "Allow"
     actions = ["ec2:CreateTags"]
     resources = [
       "arn:aws:ec2:*:*:fleet/*",
@@ -649,9 +621,9 @@ data "aws_iam_policy_document" "karpenter" {
     }
   }
   statement {
-    sid       = "EC2Delete"
-    effect    = "Allow"
-    actions   = ["ec2:TerminateInstances", "ec2:DeleteLaunchTemplate"]
+    sid    = "EC2Delete"
+    effect = "Allow"
+    actions = ["ec2:TerminateInstances", "ec2:DeleteLaunchTemplate"]
     resources = ["*"]
     condition {
       test     = "StringLike"
@@ -660,21 +632,15 @@ data "aws_iam_policy_document" "karpenter" {
     }
   }
   statement {
-    sid       = "PassRole"
-    effect    = "Allow"
-    actions   = ["iam:PassRole"]
+    sid    = "PassRole"
+    effect = "Allow"
+    actions = ["iam:PassRole"]
     resources = [aws_iam_role.node.arn]
     condition {
       test     = "StringEquals"
       variable = "iam:PassedToService"
       values   = ["ec2.amazonaws.com"]
     }
-  }
-  statement {
-    sid       = "EKS"
-    effect    = "Allow"
-    actions   = ["eks:DescribeCluster"]
-    resources = [aws_eks_cluster.main.arn]
   }
   statement {
     sid       = "SSM"

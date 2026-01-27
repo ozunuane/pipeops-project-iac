@@ -105,6 +105,7 @@ resource "helm_release" "karpenter" {
   depends_on = [
     module.eks,
     aws_iam_role_policy.karpenter_interruption[0],
+    aws_eks_access_policy_association.cluster_scoped,
   ]
 }
 
