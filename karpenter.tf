@@ -259,7 +259,7 @@ resource "kubectl_manifest" "karpenter_nodeclass" {
     spec = {
       amiFamily = "AL2"
       # v1 requires amiSelectorTerms. Pin alias in prod, e.g. al2@v20240807 (see AWS Karpenter best practices).
-      amiSelectorTerms           = [{ alias = "al2@latest" }]
+      amiSelectorTerms           = [{ alias = "al2@v20250109" }]
       instanceProfile            = module.eks[0].node_instance_profile_name
       subnetSelectorTerms        = [{ tags = { "karpenter.sh/discovery" = local.cluster_name } }]
       securityGroupSelectorTerms = [{ tags = { "karpenter.sh/discovery" = local.cluster_name } }]
