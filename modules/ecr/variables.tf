@@ -117,8 +117,14 @@ variable "github_actions_role_arn" {
   default     = ""
 }
 
+variable "create_eks_ecr_pull_policy" {
+  description = "Create IAM policy and attach to EKS node role for ECR pull access. Use a plan-time known bool (e.g. var.cluster_exists); do not derive from computed role ARN."
+  type        = bool
+  default     = false
+}
+
 variable "eks_node_role_arn" {
-  description = "ARN of the EKS node IAM role (for pull access)"
+  description = "ARN of the EKS node IAM role (for pull access). Required when create_eks_ecr_pull_policy is true."
   type        = string
   default     = ""
 }

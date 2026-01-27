@@ -77,8 +77,9 @@ module "eks" {
   desired_capacity                     = 3
   min_capacity                         = 1
   max_capacity                         = 10
-  node_instance_types                  = ["m5.large", "m5.xlarge", "m5.2xlarge"]
-  tags                                 = var.tags
+  node_instance_types                         = ["m5.large", "m5.xlarge", "m5.2xlarge"]
+  enable_aws_load_balancer_controller_addon   = var.enable_aws_load_balancer_controller_addon
+  tags                                        = var.tags
 }
 
 # RDS Module with Multi-AZ and Read Replica support
@@ -132,33 +133,52 @@ module "rds" {
   tags = var.tags
 }
 
-# Configure Kubernetes and Helm providers after EKS cluster is created
-# Note: Set var.cluster_exists = true after first deployment creates EKS
-data "aws_eks_cluster_auth" "cluster" {
-  count = var.cluster_exists ? 1 : 0
-  name  = module.eks.cluster_name
-}
-
+# Configure Kubernetes and Helm providers for EKS
+# Use exec-based auth (aws eks get-token) so tokens stay fresh during long applies.
+# Static tokens from aws_eks_cluster_auth expire ~15min and cause "credentials" errors.
 provider "kubernetes" {
-  host                   = var.cluster_exists ? module.eks.cluster_endpoint : ""
+  host                   = var.cluster_exists ? module.eks.cluster_endpoint : "https://localhost"
   cluster_ca_certificate = var.cluster_exists ? base64decode(module.eks.cluster_certificate_authority_data) : ""
-  token                  = var.cluster_exists ? data.aws_eks_cluster_auth.cluster[0].token : ""
+  exec {
+    api_version = "client.authentication.k8s.io/v1beta1"
+    command     = "aws"
+    args        = ["eks", "get-token", "--cluster-name", module.eks.cluster_name]
+    env = {
+      AWS_REGION = var.region
+    }
+  }
 }
 
 provider "helm" {
   kubernetes {
-    host                   = var.cluster_exists ? module.eks.cluster_endpoint : ""
+    host                   = var.cluster_exists ? module.eks.cluster_endpoint : "https://localhost"
     cluster_ca_certificate = var.cluster_exists ? base64decode(module.eks.cluster_certificate_authority_data) : ""
-    token                  = var.cluster_exists ? data.aws_eks_cluster_auth.cluster[0].token : ""
+    exec {
+      api_version = "client.authentication.k8s.io/v1beta1"
+      command     = "aws"
+      args        = ["eks", "get-token", "--cluster-name", module.eks.cluster_name]
+      env = {
+        AWS_REGION = var.region
+      }
+    }
   }
 }
 
-# ==========================================
-# AWS LOAD BALANCER CONTROLLER - REMOVED FOR AUTO MODE
-# ==========================================
-# EKS Auto Mode with kubernetes_network_config.elastic_load_balancing.enabled = true
-# automatically installs and manages the AWS Load Balancer Controller.
-# Manual helm installation will conflict with Auto Mode.
+provider "kubectl" {
+  host                   = var.cluster_exists ? module.eks.cluster_endpoint : "https://localhost"
+  cluster_ca_certificate = var.cluster_exists ? base64decode(module.eks.cluster_certificate_authority_data) : ""
+  load_config_file       = false
+  exec {
+    api_version = "client.authentication.k8s.io/v1beta1"
+    command     = "aws"
+    args        = ["eks", "get-token", "--cluster-name", module.eks.cluster_name]
+    env = {
+      AWS_REGION = var.region
+    }
+  }
+}
+
+# AWS Load Balancer Controller is installed via EKS addon (modules/eks).
 # ==========================================
 
 # Monitoring Module - Only deploy when cluster exists

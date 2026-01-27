@@ -1,4 +1,5 @@
-# EKS Cluster with Auto Mode
+# EKS Cluster (manual mode with Karpenter)
+# Ref: https://dev.to/aws-builders/navigating-aws-eks-with-terraform-configuring-karpenter-for-just-in-time-node-provisioning-5g45
 resource "aws_eks_cluster" "main" {
   name     = var.cluster_name
   version  = var.kubernetes_version
@@ -12,34 +13,26 @@ resource "aws_eks_cluster" "main" {
     security_group_ids      = [aws_security_group.cluster.id]
   }
 
-  # Access configuration - Required for EKS Auto Mode
-  # Must be API_AND_CONFIG_MAP or API when Auto Mode is enabled
   access_config {
     authentication_mode                         = "API_AND_CONFIG_MAP"
     bootstrap_cluster_creator_admin_permissions = true
   }
 
-  # EKS Auto Mode Configuration
-  # When Auto Mode is enabled with node_pools, node_role_arn is required
-  # Reference: https://docs.aws.amazon.com/eks/latest/userguide/automode.html
+  # Manual mode: compute, ELB, block storage all disabled (must match per AWS)
+  # We use managed node group + Karpenter, EKS addons (incl. AWS LB Controller), EBS CSI addon
   compute_config {
-    enabled       = true
-    node_pools    = ["general-purpose", "system"] # Auto Mode managed node pools
-    node_role_arn = aws_iam_role.node.arn
+    enabled = false
   }
-
-  # When Auto Mode is enabled, bootstrapSelfManagedAddons must be false
-  bootstrap_self_managed_addons = false
 
   kubernetes_network_config {
     elastic_load_balancing {
-      enabled = true # Enable ALB/NLB integration
+      enabled = false
     }
   }
 
   storage_config {
     block_storage {
-      enabled = true # Enable EBS CSI driver auto-provisioning
+      enabled = false
     }
   }
 
@@ -55,20 +48,8 @@ resource "aws_eks_cluster" "main" {
   enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
 
   depends_on = [
-    # Cluster IAM policies
     aws_iam_role_policy_attachment.cluster_AmazonEKSClusterPolicy,
-    # EKS Auto Mode required policies
-    aws_iam_role_policy_attachment.cluster_AmazonEKSComputePolicy,
-    aws_iam_role_policy_attachment.cluster_AmazonEKSBlockStoragePolicy,
-    aws_iam_role_policy_attachment.cluster_AmazonEKSLoadBalancingPolicy,
-    aws_iam_role_policy_attachment.cluster_AmazonEKSNetworkingPolicy,
     aws_cloudwatch_log_group.cluster,
-    # Node role and instance profile must exist before cluster creation (required for Auto Mode)
-    aws_iam_role.node,
-    aws_iam_instance_profile.node,
-    aws_iam_role_policy_attachment.node_AmazonEKSWorkerNodePolicy,
-    aws_iam_role_policy_attachment.node_AmazonEKS_CNI_Policy,
-    aws_iam_role_policy_attachment.node_AmazonEC2ContainerRegistryReadOnly,
   ]
 
   tags = var.tags
@@ -79,12 +60,12 @@ resource "aws_eks_cluster" "main" {
   # lifecycle {
   #   create_before_destroy = false
 
-    # # Force replacement if these critical resources change
-    # replace_triggered_by = [
-    #   aws_iam_role.cluster.arn,
-    #   aws_iam_role.node.arn,
-    #   aws_iam_instance_profile.node.arn,
-    # ]
+  # # Force replacement if these critical resources change
+  # replace_triggered_by = [
+  #   aws_iam_role.cluster.arn,
+  #   aws_iam_role.node.arn,
+  #   aws_iam_instance_profile.node.arn,
+  # ]
   # }
 }
 
@@ -133,116 +114,6 @@ resource "aws_iam_role" "cluster" {
 resource "aws_iam_role_policy_attachment" "cluster_AmazonEKSClusterPolicy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
   role       = aws_iam_role.cluster.name
-}
-
-# ==========================================
-# EKS Auto Mode Required Policies
-# ==========================================
-# These AWS managed policies are required for EKS Auto Mode to:
-# - Provision and manage EC2 instances (Compute)
-# - Provision and attach EBS volumes (BlockStorage)
-# - Create and manage ALB/NLB load balancers (LoadBalancing)
-# - Manage VPC networking and ENIs (Networking)
-
-resource "aws_iam_role_policy_attachment" "cluster_AmazonEKSComputePolicy" {
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSComputePolicy"
-  role       = aws_iam_role.cluster.name
-}
-
-resource "aws_iam_role_policy_attachment" "cluster_AmazonEKSBlockStoragePolicy" {
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSBlockStoragePolicy"
-  role       = aws_iam_role.cluster.name
-}
-
-resource "aws_iam_role_policy_attachment" "cluster_AmazonEKSLoadBalancingPolicy" {
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSLoadBalancingPolicy"
-  role       = aws_iam_role.cluster.name
-}
-
-resource "aws_iam_role_policy_attachment" "cluster_AmazonEKSNetworkingPolicy" {
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSNetworkingPolicy"
-  role       = aws_iam_role.cluster.name
-}
-
-# Additional IAM policy for EKS cluster to work with Auto Mode
-resource "aws_iam_role_policy" "cluster_auto_mode" {
-  name = "${var.cluster_name}-auto-mode-policy"
-  role = aws_iam_role.cluster.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "EC2NetworkingPermissions"
-        Effect = "Allow"
-        Action = [
-          # Network interface management
-          "ec2:CreateNetworkInterface",
-          "ec2:DeleteNetworkInterface",
-          "ec2:AttachNetworkInterface",
-          "ec2:DetachNetworkInterface",
-          "ec2:ModifyNetworkInterfaceAttribute",
-          "ec2:DescribeNetworkInterfaces",
-          "ec2:DescribeSubnets",
-          "ec2:DescribeVpcs",
-          "ec2:DescribeRouteTables",
-          "ec2:DescribeSecurityGroups",
-          # Auto Scaling permissions
-          "autoscaling:*",
-          "application-autoscaling:*",
-          # EKS Auto Mode specific permissions
-          "eks:CreateNodepool",
-          "eks:DeleteNodepool",
-          "eks:DescribeNodepool",
-          "eks:ListNodepools",
-          "eks:UpdateNodepool",
-          "eks:TagResource",
-          "eks:UntagResource",
-          # Additional EC2 permissions for Auto Mode
-          "ec2:CreateTags",
-          "ec2:DescribeInstances",
-          "ec2:DescribeInstanceTypes",
-          "ec2:DescribeLaunchTemplates",
-          "ec2:DescribeLaunchTemplateVersions",
-          "ec2:RunInstances",
-          "ec2:TerminateInstances",
-          # IAM permissions for service-linked roles
-          "iam:CreateServiceLinkedRole",
-          "iam:PassRole"
-        ]
-        Resource = "*"
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "iam:PassRole"
-        ]
-        Resource = [
-          "arn:aws:iam::*:role/aws-service-role/eks-nodepool.amazonaws.com/AWSServiceRoleForAmazonEKSNodepool",
-          "arn:aws:iam::*:role/aws-service-role/compute.eks.amazonaws.com/AWSServiceRoleForAmazonEKSComputeManagement"
-        ]
-      },
-      {
-        # FIX: EKS Auto Mode creates instance profiles but needs permission to attach roles
-        # AmazonEKSComputePolicy only allows iam:AddRoleToInstanceProfile for "eks-compute-*"
-        # but EKS Auto Mode creates profiles named "eks-<region>-<cluster>-<hash>"
-        Sid    = "EKSAutoModeInstanceProfileManagement"
-        Effect = "Allow"
-        Action = [
-          "iam:CreateInstanceProfile",
-          "iam:DeleteInstanceProfile",
-          "iam:GetInstanceProfile",
-          "iam:AddRoleToInstanceProfile",
-          "iam:RemoveRoleFromInstanceProfile",
-          "iam:TagInstanceProfile"
-        ]
-        Resource = [
-          "arn:aws:iam::*:instance-profile/eks-*",
-          "arn:aws:iam::*:instance-profile/${var.cluster_name}-*"
-        ]
-      }
-    ]
-  })
 }
 
 # Security Group for EKS Cluster
@@ -309,7 +180,9 @@ resource "aws_security_group" "node" {
   }
 
   tags = merge(var.tags, {
-    Name = "${var.cluster_name}-node-sg"
+    Name                                        = "${var.cluster_name}-node-sg"
+    "kubernetes.io/cluster/${var.cluster_name}" = "owned"
+    "karpenter.sh/discovery"                    = var.cluster_name
   })
 }
 
@@ -325,20 +198,35 @@ resource "aws_security_group_rule" "cluster_to_nodes" {
 }
 
 # ==========================================
-# NOTE: Manual node group REMOVED
+# Managed Node Group (system workloads) + Karpenter (apps)
 # ==========================================
-# When EKS Auto Mode is enabled (compute_config.enabled = true with node_pools),
-# AWS automatically manages node groups. Creating manual aws_eks_node_group
-# resources will conflict with Auto Mode.
-#
-# Auto Mode handles:
-# - Node provisioning and scaling
-# - Instance type selection
-# - Node upgrades and patching
-# - Security configuration
-#
-# Reference: https://docs.aws.amazon.com/eks/latest/userguide/automode.html
-# ==========================================
+# Small managed node group for CoreDNS, kube-proxy, etc.
+# Karpenter provisions additional nodes for application workloads.
+resource "aws_eks_node_group" "main" {
+  cluster_name    = aws_eks_cluster.main.name
+  node_group_name = "${var.cluster_name}-ng"
+  node_role_arn   = aws_iam_role.node.arn
+  subnet_ids      = var.private_subnet_ids
+  instance_types  = var.node_instance_types
+
+  scaling_config {
+    desired_size = var.desired_capacity
+    max_size     = var.max_capacity
+    min_size     = var.min_capacity
+  }
+
+  update_config {
+    max_unavailable = 1
+  }
+
+  tags = var.tags
+
+  depends_on = [
+    aws_iam_role_policy_attachment.node_AmazonEKSWorkerNodePolicy,
+    aws_iam_role_policy_attachment.node_AmazonEKS_CNI_Policy,
+    aws_iam_role_policy_attachment.node_AmazonEC2ContainerRegistryReadOnly,
+  ]
+}
 
 # IAM role for EKS Node Group
 resource "aws_iam_role" "node" {
@@ -358,8 +246,7 @@ resource "aws_iam_role" "node" {
   tags = var.tags
 }
 
-# Instance profile for EKS nodes (required for EKS Auto Mode)
-# EKS Auto Mode NodeClass references this to launch EC2 instances
+# Instance profile for EKS nodes (managed node group + Karpenter-provisioned nodes)
 resource "aws_iam_instance_profile" "node" {
   name = "${var.cluster_name}-eks-node-role"
   role = aws_iam_role.node.name
@@ -384,65 +271,6 @@ resource "aws_iam_role_policy_attachment" "node_AmazonEC2ContainerRegistryReadOn
   role       = aws_iam_role.node.name
 }
 
-# EBS CSI Driver policy (required for Auto Mode with persistent volumes)
-resource "aws_iam_role_policy_attachment" "node_AmazonEBSCSIDriverPolicy" {
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
-  role       = aws_iam_role.node.name
-}
-
-# Additional IAM policy for Auto Scaling, CloudWatch, and EBS CSI
-resource "aws_iam_role_policy" "node_auto_scaling" {
-  name = "${var.cluster_name}-node-auto-scaling"
-  role = aws_iam_role.node.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          # Auto Scaling permissions
-          "autoscaling:DescribeAutoScalingGroups",
-          "autoscaling:DescribeAutoScalingInstances",
-          "autoscaling:DescribeLaunchConfigurations",
-          "autoscaling:DescribeTags",
-          "autoscaling:SetDesiredCapacity",
-          "autoscaling:TerminateInstanceInAutoScalingGroup",
-          "ec2:DescribeLaunchTemplateVersions",
-          # CloudWatch permissions
-          "cloudwatch:PutMetricData",
-          # EBS CSI driver permissions (required for Auto Mode)
-          "ec2:AttachVolume",
-          "ec2:CreateSnapshot",
-          "ec2:CreateTags",
-          "ec2:CreateVolume",
-          "ec2:DeleteSnapshot",
-          "ec2:DeleteTags",
-          "ec2:DeleteVolume",
-          "ec2:DescribeAvailabilityZones",
-          "ec2:DescribeInstances",
-          "ec2:DescribeSnapshots",
-          "ec2:DescribeTags",
-          "ec2:DescribeVolumes",
-          "ec2:DescribeVolumesModifications",
-          "ec2:DetachVolume",
-          "ec2:ModifyVolume",
-          # VPC CNI advanced permissions for Auto Mode
-          "ec2:AssignPrivateIpAddresses",
-          "ec2:CreateNetworkInterface",
-          "ec2:DeleteNetworkInterface",
-          "ec2:DescribeNetworkInterfaces",
-          "ec2:DescribeSubnets",
-          "ec2:DescribeVpcs",
-          "ec2:ModifyNetworkInterfaceAttribute",
-          "ec2:UnassignPrivateIpAddresses"
-        ]
-        Resource = "*"
-      }
-    ]
-  })
-}
-
 # OIDC Identity provider
 data "tls_certificate" "cluster" {
   url = aws_eks_cluster.main.identity[0].oidc[0].issuer
@@ -459,15 +287,411 @@ resource "aws_iam_openid_connect_provider" "cluster" {
 }
 
 # ==========================================
+# EKS Addons (VPC CNI, CoreDNS, kube-proxy, metrics-server, EBS CSI, AWS LB Controller)
+# ==========================================
+# Versions: aws_eks_addon_version (most_recent) on create. lifecycle ignore_changes
+# [addon_version] prevents upgrades on every apply. To upgrade: taint addon, then apply.
+# ==========================================
+locals {
+  oidc_issuer_host = replace(aws_eks_cluster.main.identity[0].oidc[0].issuer, "https://", "")
+  # AWS LB Controller addon is not supported on EKS 1.33; install via Helm if needed.
+  enable_lb_controller_addon = var.enable_aws_load_balancer_controller_addon
+}
+
+# Resolve addon versions compatible with cluster Kubernetes version (avoids "not supported" errors)
+data "aws_eks_addon_version" "vpc_cni" {
+  addon_name         = "vpc-cni"
+  kubernetes_version = var.kubernetes_version
+  most_recent        = true
+}
+
+data "aws_eks_addon_version" "coredns" {
+  addon_name         = "coredns"
+  kubernetes_version = var.kubernetes_version
+  most_recent        = true
+}
+
+data "aws_eks_addon_version" "kube_proxy" {
+  addon_name         = "kube-proxy"
+  kubernetes_version = var.kubernetes_version
+  most_recent        = true
+}
+
+data "aws_eks_addon_version" "ebs_csi" {
+  addon_name         = "aws-ebs-csi-driver"
+  kubernetes_version = var.kubernetes_version
+  most_recent        = true
+}
+
+data "aws_eks_addon_version" "aws_load_balancer_controller" {
+  count              = local.enable_lb_controller_addon ? 1 : 0
+  addon_name         = "aws-load-balancer-controller"
+  kubernetes_version = var.kubernetes_version
+  most_recent        = true
+}
+
+data "aws_eks_addon_version" "metrics_server" {
+  addon_name         = "metrics-server"
+  kubernetes_version = var.kubernetes_version
+  most_recent        = true
+}
+
+resource "aws_eks_addon" "vpc_cni" {
+  cluster_name                = aws_eks_cluster.main.name
+  addon_name                  = "vpc-cni"
+  addon_version               = data.aws_eks_addon_version.vpc_cni.version
+  service_account_role_arn    = aws_iam_role.vpc_cni.arn
+  resolve_conflicts_on_create = "OVERWRITE"
+  resolve_conflicts_on_update = "OVERWRITE"
+  tags                        = var.tags
+  depends_on                  = [aws_eks_cluster.main, aws_iam_role_policy_attachment.vpc_cni_AmazonEKS_CNI_Policy]
+
+  lifecycle {
+    ignore_changes = [addon_version]
+  }
+}
+
+resource "aws_eks_addon" "coredns" {
+  cluster_name                = aws_eks_cluster.main.name
+  addon_name                  = "coredns"
+  addon_version               = data.aws_eks_addon_version.coredns.version
+  resolve_conflicts_on_create = "OVERWRITE"
+  resolve_conflicts_on_update = "OVERWRITE"
+  tags                        = var.tags
+  depends_on = [
+    aws_eks_cluster.main,
+    aws_eks_addon.vpc_cni,
+    aws_eks_node_group.main,
+  ]
+
+  timeouts {
+    create = "25m"
+    update = "25m"
+  }
+
+  lifecycle {
+    ignore_changes = [addon_version]
+  }
+}
+
+resource "aws_eks_addon" "kube_proxy" {
+  cluster_name                = aws_eks_cluster.main.name
+  addon_name                  = "kube-proxy"
+  addon_version               = data.aws_eks_addon_version.kube_proxy.version
+  resolve_conflicts_on_create = "OVERWRITE"
+  resolve_conflicts_on_update = "OVERWRITE"
+  tags                        = var.tags
+  depends_on                  = [aws_eks_cluster.main]
+
+  lifecycle {
+    ignore_changes = [addon_version]
+  }
+}
+
+resource "aws_eks_addon" "metrics_server" {
+  cluster_name                = aws_eks_cluster.main.name
+  addon_name                  = "metrics-server"
+  addon_version               = data.aws_eks_addon_version.metrics_server.version
+  resolve_conflicts_on_create = "OVERWRITE"
+  resolve_conflicts_on_update = "OVERWRITE"
+  tags                        = var.tags
+  depends_on                  = [aws_eks_cluster.main, aws_eks_node_group.main]
+
+  lifecycle {
+    ignore_changes = [addon_version]
+  }
+}
+
+resource "aws_eks_addon" "ebs_csi" {
+  cluster_name                = aws_eks_cluster.main.name
+  addon_name                  = "aws-ebs-csi-driver"
+  addon_version               = data.aws_eks_addon_version.ebs_csi.version
+  service_account_role_arn    = aws_iam_role.ebs_csi.arn
+  resolve_conflicts_on_create = "OVERWRITE"
+  resolve_conflicts_on_update = "OVERWRITE"
+  tags                        = var.tags
+  depends_on = [
+    aws_eks_cluster.main,
+    aws_iam_role_policy_attachment.ebs_csi_AmazonEBSCSIDriverPolicy,
+    aws_eks_node_group.main,
+  ]
+
+  timeouts {
+    create = "25m"
+    update = "25m"
+  }
+
+  lifecycle {
+    ignore_changes = [addon_version]
+  }
+}
+
+resource "aws_eks_addon" "aws_load_balancer_controller" {
+  count                       = local.enable_lb_controller_addon ? 1 : 0
+  cluster_name                = aws_eks_cluster.main.name
+  addon_name                  = "aws-load-balancer-controller"
+  addon_version               = data.aws_eks_addon_version.aws_load_balancer_controller[0].version
+  service_account_role_arn    = aws_iam_role.aws_load_balancer_controller.arn
+  resolve_conflicts_on_create = "OVERWRITE"
+  resolve_conflicts_on_update = "OVERWRITE"
+  tags                        = var.tags
+  depends_on                  = [aws_eks_cluster.main, aws_eks_addon.vpc_cni]
+
+  lifecycle {
+    ignore_changes = [addon_version]
+  }
+}
+
+# ==========================================
+# IRSA Roles for Addons
+# ==========================================
+resource "aws_iam_role" "vpc_cni" {
+  name = "${var.cluster_name}-vpc-cni-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = { Federated = aws_iam_openid_connect_provider.cluster.arn }
+      Action = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "${local.oidc_issuer_host}:sub" = "system:serviceaccount:kube-system:aws-node"
+          "${local.oidc_issuer_host}:aud" = "sts.amazonaws.com"
+        }
+      }
+    }]
+  })
+  tags = var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "vpc_cni_AmazonEKS_CNI_Policy" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+  role       = aws_iam_role.vpc_cni.name
+}
+
+resource "aws_iam_role" "ebs_csi" {
+  name = "${var.cluster_name}-ebs-csi-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = { Federated = aws_iam_openid_connect_provider.cluster.arn }
+      Action = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "${local.oidc_issuer_host}:sub" = "system:serviceaccount:kube-system:ebs-csi-controller-sa"
+          "${local.oidc_issuer_host}:aud" = "sts.amazonaws.com"
+        }
+      }
+    }]
+  })
+  tags = var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "ebs_csi_AmazonEBSCSIDriverPolicy" {
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+  role       = aws_iam_role.ebs_csi.name
+}
+
+resource "aws_iam_role" "aws_load_balancer_controller" {
+  name = "${var.cluster_name}-aws-lb-controller-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = { Federated = aws_iam_openid_connect_provider.cluster.arn }
+      Action = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "${local.oidc_issuer_host}:sub" = "system:serviceaccount:kube-system:aws-load-balancer-controller"
+          "${local.oidc_issuer_host}:aud" = "sts.amazonaws.com"
+        }
+      }
+    }]
+  })
+  tags = var.tags
+}
+
+resource "aws_iam_role_policy" "aws_load_balancer_controller" {
+  name   = "${var.cluster_name}-aws-lb-controller"
+  role   = aws_iam_role.aws_load_balancer_controller.id
+  policy = data.aws_iam_policy_document.aws_load_balancer_controller.json
+}
+
+data "aws_iam_policy_document" "aws_load_balancer_controller" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "iam:CreateServiceLinkedRole",
+      "ec2:DescribeAccountAttributes",
+      "ec2:DescribeAddresses",
+      "ec2:DescribeAvailabilityZones",
+      "ec2:DescribeInternetGateways",
+      "ec2:DescribeVpcs",
+      "ec2:DescribeSubnets",
+      "ec2:DescribeSecurityGroups",
+      "ec2:DescribeInstances",
+      "ec2:DescribeNetworkInterfaces",
+      "ec2:DescribeTags",
+      "elasticloadbalancing:Describe*",
+      "cognito-idp:DescribeUserPoolClient",
+      "acm:ListCertificates",
+      "acm:DescribeCertificate",
+      "iam:ListServerCertificates"
+    ]
+    resources = ["*"]
+  }
+  statement {
+    effect = "Allow"
+    actions = [
+      "ec2:CreateSecurityGroup",
+      "ec2:CreateTags",
+      "ec2:DeleteTags",
+      "ec2:DeleteSecurityGroup",
+      "ec2:AuthorizeSecurityGroupIngress",
+      "ec2:RevokeSecurityGroupIngress",
+      "elasticloadbalancing:CreateLoadBalancer",
+      "elasticloadbalancing:CreateTargetGroup",
+      "elasticloadbalancing:CreateListener",
+      "elasticloadbalancing:DeleteLoadBalancer",
+      "elasticloadbalancing:DeleteTargetGroup",
+      "elasticloadbalancing:DeleteListener",
+      "elasticloadbalancing:ModifyLoadBalancerAttributes",
+      "elasticloadbalancing:ModifyTargetGroup",
+      "elasticloadbalancing:ModifyTargetGroupAttributes",
+      "elasticloadbalancing:AddTags",
+      "elasticloadbalancing:RemoveTags",
+      "elasticloadbalancing:CreateRule",
+      "elasticloadbalancing:DeleteRule"
+    ]
+    resources = ["*"]
+  }
+}
+
+# ==========================================
+# Karpenter IAM Role (IRSA)
+# ==========================================
+resource "aws_iam_role" "karpenter" {
+  name = "${var.cluster_name}-karpenter-controller-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = { Federated = aws_iam_openid_connect_provider.cluster.arn }
+      Action = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "${local.oidc_issuer_host}:sub" = "system:serviceaccount:karpenter:karpenter"
+          "${local.oidc_issuer_host}:aud" = "sts.amazonaws.com"
+        }
+      }
+    }]
+  })
+  tags = var.tags
+}
+
+resource "aws_iam_role_policy" "karpenter" {
+  name   = "${var.cluster_name}-karpenter-policy"
+  role   = aws_iam_role.karpenter.id
+  policy = data.aws_iam_policy_document.karpenter.json
+}
+
+data "aws_iam_policy_document" "karpenter" {
+  # Read-only Describe* calls don't send request tags; separate statement, no condition.
+  statement {
+    sid    = "EC2Describe"
+    effect = "Allow"
+    actions = [
+      "ec2:DescribeAvailabilityZones",
+      "ec2:DescribeImages",
+      "ec2:DescribeInstances",
+      "ec2:DescribeInstanceTypeOfferings",
+      "ec2:DescribeInstanceTypes",
+      "ec2:DescribeLaunchTemplates",
+      "ec2:DescribeSecurityGroups",
+      "ec2:DescribeSpotPriceHistory",
+      "ec2:DescribeSubnets"
+    ]
+    resources = ["*"]
+  }
+  statement {
+    sid    = "EC2Scoped"
+    effect = "Allow"
+    actions = [
+      "ec2:CreateFleet",
+      "ec2:CreateLaunchTemplate",
+      "ec2:CreateTags",
+      "ec2:DeleteLaunchTemplate",
+      "ec2:RunInstances",
+      "ec2:TerminateInstances"
+    ]
+    resources = ["*"]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/karpenter.sh/cluster"
+      values   = [var.cluster_name]
+    }
+  }
+  statement {
+    sid    = "EC2Tagged"
+    effect = "Allow"
+    actions = ["ec2:CreateTags"]
+    resources = [
+      "arn:aws:ec2:*:*:fleet/*",
+      "arn:aws:ec2:*:*:instance/*",
+      "arn:aws:ec2:*:*:launch-template/*",
+      "arn:aws:ec2:*:*:spot-instances-request/*"
+    ]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/karpenter.sh/cluster"
+      values   = [var.cluster_name]
+    }
+  }
+  statement {
+    sid    = "EC2Delete"
+    effect = "Allow"
+    actions = ["ec2:TerminateInstances", "ec2:DeleteLaunchTemplate"]
+    resources = ["*"]
+    condition {
+      test     = "StringLike"
+      variable = "ec2:ResourceTag/karpenter.sh/cluster"
+      values   = [var.cluster_name]
+    }
+  }
+  statement {
+    sid    = "PassRole"
+    effect = "Allow"
+    actions = ["iam:PassRole"]
+    resources = [aws_iam_role.node.arn]
+    condition {
+      test     = "StringEquals"
+      variable = "iam:PassedToService"
+      values   = ["ec2.amazonaws.com"]
+    }
+  }
+  statement {
+    sid       = "EKS"
+    effect    = "Allow"
+    actions   = ["eks:DescribeCluster"]
+    resources = [aws_eks_cluster.main.arn]
+  }
+  statement {
+    sid       = "SSM"
+    effect    = "Allow"
+    actions   = ["ssm:GetParameter"]
+    resources = ["arn:aws:ssm:*:*:parameter/aws/service/eks/optimized-ami/*"]
+  }
+  statement {
+    sid       = "Pricing"
+    effect    = "Allow"
+    actions   = ["pricing:GetProducts"]
+    resources = ["*"]
+  }
+}
+
+# ==========================================
 # Service-Linked Roles
 # ==========================================
-# NOTE: Service-linked roles for EKS Auto Mode are automatically created by AWS
-# when the cluster is created. We do NOT need to create them manually.
-# 
-# AWS automatically creates:
-# - AWSServiceRoleForAmazonEKS (for cluster management)
-# - Any additional roles needed for Auto Mode
-#
-# Attempting to create them manually will fail with "not a valid AWS service name"
-# Reference: https://docs.aws.amazon.com/eks/latest/userguide/using-service-linked-roles.html
+# AWS creates EKS service-linked roles automatically. Do not create manually.
 # ==========================================

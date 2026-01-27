@@ -25,7 +25,8 @@ resource "helm_release" "prometheus_stack" {
 
   values = [
     yamlencode({
-      fullnameOverride = "prometheus"
+      # Use "monitoring" to avoid duplicate names (e.g. prometheus-prometheus -> monitoring-prometheus)
+      fullnameOverride = "monitoring"
 
       defaultRules = {
         create = true
@@ -242,7 +243,8 @@ resource "helm_release" "prometheus_stack" {
       }
 
       prometheus = {
-        enabled          = true
+        enabled = true
+        # Subchart name; service becomes monitoring-prometheus (no duplicate)
         fullnameOverride = "prometheus"
 
         prometheusSpec = {

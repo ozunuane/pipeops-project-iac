@@ -45,6 +45,32 @@ output "node_security_group_id" {
   value       = module.eks.node_security_group_id
 }
 
+output "region" {
+  description = "AWS region (for eks update-kubeconfig, scripts)"
+  value       = var.region
+}
+
+output "aws_region" {
+  description = "AWS region (alias for scripts, e.g. deploy_karpenter.sh)"
+  value       = var.region
+}
+
+# Karpenter / EKS node outputs (for deploy_karpenter.sh)
+output "karpenter_controller_role_arn" {
+  description = "IAM role ARN for Karpenter controller (IRSA)"
+  value       = module.eks.karpenter_role_arn
+}
+
+output "node_instance_role_arn" {
+  description = "IAM role ARN of the EKS node group"
+  value       = module.eks.node_role_arn
+}
+
+output "node_instance_profile_name" {
+  description = "Instance profile name for EKS nodes (Karpenter defaultInstanceProfile)"
+  value       = module.eks.node_instance_profile_name
+}
+
 # RDS Outputs
 output "rds_endpoint" {
   description = "RDS instance endpoint"

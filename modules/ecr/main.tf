@@ -335,7 +335,7 @@ resource "aws_iam_role_policy_attachment" "github_actions_ecr" {
 #------------------------------------------------------------------------------
 
 resource "aws_iam_policy" "eks_ecr_pull" {
-  count = var.eks_node_role_arn != "" && length(var.repository_names) > 0 ? 1 : 0
+  count = var.create_eks_ecr_pull_policy && length(var.repository_names) > 0 ? 1 : 0
 
   name        = "${var.project_name}-${var.environment}-ecr-pull"
   description = "Policy for EKS nodes to pull images from ECR"
@@ -372,7 +372,7 @@ resource "aws_iam_policy" "eks_ecr_pull" {
 
 # Attach policy to EKS node role if provided
 resource "aws_iam_role_policy_attachment" "eks_ecr_pull" {
-  count = var.eks_node_role_arn != "" && length(var.repository_names) > 0 ? 1 : 0
+  count = var.create_eks_ecr_pull_policy && length(var.repository_names) > 0 ? 1 : 0
 
   role       = split("/", var.eks_node_role_arn)[1]
   policy_arn = aws_iam_policy.eks_ecr_pull[0].arn

@@ -24,8 +24,8 @@ output "repository_names" {
 }
 
 output "repository_urls_list" {
-  description = "List of repository URLs (same order as input)"
-  value       = [for name in var.repository_names : aws_ecr_repository.main[name].repository_url]
+  description = "List of repository URLs (same order as input, only repos that exist)"
+  value       = [for name in var.repository_names : aws_ecr_repository.main[name].repository_url if contains(keys(aws_ecr_repository.main), name)]
 }
 
 output "registry_id" {
@@ -45,7 +45,7 @@ output "github_actions_policy_arn" {
 
 output "eks_pull_policy_arn" {
   description = "ARN of the IAM policy for EKS ECR pull access"
-  value       = var.eks_node_role_arn != "" && length(var.repository_names) > 0 ? aws_iam_policy.eks_ecr_pull[0].arn : null
+  value       = var.create_eks_ecr_pull_policy && length(var.repository_names) > 0 ? aws_iam_policy.eks_ecr_pull[0].arn : null
 }
 
 output "replication_enabled" {
