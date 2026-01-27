@@ -53,7 +53,7 @@ enable_logging    = false # Disable logging in dev
 
 # Tags
 # AWS Backup Configuration (minimal for dev)
-enable_eks_backup               = true
+enable_eks_backup               = false
 backup_schedule                 = "cron(0 6 * * ? *)" # Daily at 6:00 AM UTC
 backup_retention_days           = 7                   # Keep daily backups for 7 days only
 backup_weekly_retention_days    = 30                  # Keep weekly backups for 30 days
