@@ -197,6 +197,20 @@ resource "aws_iam_role_policy" "karpenter_controller" {
         }
       },
       {
+        Sid    = "AllowCreateFleetAuthCheck"
+        Effect = "Allow"
+        Action = [
+          "ec2:CreateFleet",
+          "ec2:RunInstances"
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:RequestedRegion" = var.region
+          }
+        }
+      },
+      {
         Sid    = "AllowSSMReadActions"
         Effect = "Allow"
         Action = "ssm:GetParameter"
