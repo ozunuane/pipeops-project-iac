@@ -26,7 +26,9 @@ set -e
 #   ✓ KMS key for encryption
 #   ✓ GitHub OIDC provider (once per AWS account)
 #   ✓ IAM role for GitHub Actions (per environment) - allows ALL repos under GITHUB_ORG
+#   ✓ EKS Terraform exec role (per environment) - CI assumes OIDC, then assumes this role for EKS
 #   ✓ Backend configuration file
+#   ✓ environments/<ENV>/eks-exec-role-arn.txt - used by Terraform for aws eks get-token --role-arn
 #
 # OIDC Trust Policy:
 #   The IAM role trust policy allows ALL repositories under the specified
@@ -310,6 +312,70 @@ EOF
     log_warning "   Secret value: ${ROLE_ARN}"
 }
 
+create_eks_exec_role() {
+    log_info "Creating EKS Terraform exec role for ${ENVIRONMENT}..."
+    
+    OIDC_ROLE_NAME="${PROJECT_NAME}-${ENVIRONMENT}-github-actions"
+    OIDC_ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${OIDC_ROLE_NAME}"
+    EKS_EXEC_ROLE_NAME="${PROJECT_NAME}-${ENVIRONMENT}-eks-terraform-exec"
+    EKS_EXEC_ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${EKS_EXEC_ROLE_NAME}"
+    
+    # Trust policy: allow OIDC role to assume this role (STS AssumeRole)
+    TRUST_POLICY=$(cat <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": { "AWS": "${OIDC_ROLE_ARN}" },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
+)
+    
+    if ! aws iam get-role --role-name "$EKS_EXEC_ROLE_NAME" >/dev/null 2>&1; then
+        aws iam create-role \
+            --role-name "$EKS_EXEC_ROLE_NAME" \
+            --assume-role-policy-document "$TRUST_POLICY" \
+            --description "EKS Terraform exec role for ${PROJECT_NAME} ${ENVIRONMENT} - assumed by OIDC role for kubectl/Helm" \
+            --tags Key=ManagedBy,Value=setup-prerequisites Key=Project,Value=${PROJECT_NAME} Key=Environment,Value=${ENVIRONMENT}
+        log_success "EKS Terraform exec role created: $EKS_EXEC_ROLE_NAME"
+    else
+        log_info "EKS Terraform exec role already exists: $EKS_EXEC_ROLE_NAME"
+        aws iam update-assume-role-policy \
+            --role-name "$EKS_EXEC_ROLE_NAME" \
+            --policy-document "$TRUST_POLICY"
+    fi
+    
+    # Allow OIDC role to assume the EKS exec role
+    ASSUME_POLICY=$(cat <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "sts:AssumeRole",
+      "Resource": "${EKS_EXEC_ROLE_ARN}"
+    }
+  ]
+}
+EOF
+)
+    aws iam put-role-policy \
+        --role-name "$OIDC_ROLE_NAME" \
+        --policy-name "AssumeEksTerraformExecRole" \
+        --policy-document "$ASSUME_POLICY"
+    log_success "OIDC role $OIDC_ROLE_NAME can assume $EKS_EXEC_ROLE_NAME"
+    
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+    mkdir -p "$ROOT_DIR/environments/$ENVIRONMENT"
+    echo "$EKS_EXEC_ROLE_ARN" > "$ROOT_DIR/environments/$ENVIRONMENT/eks-exec-role-arn.txt"
+    log_success "Wrote environments/$ENVIRONMENT/eks-exec-role-arn.txt (Terraform uses this for aws eks get-token --role-arn)"
+}
+
 create_iam_roles() {
     if [[ "$SKIP_OIDC" == "true" ]]; then
         log_warning "Skipping OIDC setup (SKIP_OIDC=true)"
@@ -325,6 +391,9 @@ create_iam_roles() {
     
     # Create GitHub Actions OIDC role (per environment)
     create_github_actions_oidc_role
+    
+    # Create EKS exec role (OIDC assumes this for EKS access; Terraform uses --role-arn)
+    create_eks_exec_role
 }
 
 generate_backend_config() {
@@ -422,10 +491,13 @@ print_next_steps() {
     if [[ "$SKIP_OIDC" != "true" ]]; then
         ROLE_NAME="${PROJECT_NAME}-${ENVIRONMENT}-github-actions"
         ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${ROLE_NAME}"
+        EKS_EXEC_NAME="${PROJECT_NAME}-${ENVIRONMENT}-eks-terraform-exec"
         
         log_info "✓ OIDC Provider:   token.actions.githubusercontent.com"
         log_info "✓ IAM Role:        $ROLE_NAME"
+        log_info "✓ EKS Exec Role:   $EKS_EXEC_NAME (OIDC assumes this for EKS)"
         log_info "✓ Allowed Repos:   ALL repos under ${GITHUB_ORG}/*"
+        log_info "✓ eks-exec ARN:    environments/$ENVIRONMENT/eks-exec-role-arn.txt"
     fi
     
     log_info "✓ Backend Config:  environments/$ENVIRONMENT/backend.conf"
@@ -487,6 +559,9 @@ print_next_steps() {
         log_info "4. Push to GitHub and let CI/CD handle deployments!"
         echo ""
         log_info "The GitHub Actions workflows will automatically use OIDC authentication!"
+        echo ""
+        log_info "For EXISTING clusters: run once so CI can reach EKS (registers eks-exec role):"
+        log_info "   make bootstrap-eks-access ENV=$ENVIRONMENT"
     else
         log_warning "⚠️  OIDC was skipped. Configure AWS authentication for GitHub Actions:"
         log_info "   - See: .github/workflows/AWS_OIDC_SETUP_GUIDE.md"

@@ -134,12 +134,12 @@ aws eks describe-cluster --name pipeops-prod-eks --region us-west-2
 ```bash
 cd dr-infrastructure
 
-# Update configuration
+# Update configuration (variables declarative in tfvars only; no -var overrides)
 vim environments/drprod/terraform.tfvars
 # Set: dr_desired_capacity = 6, dr_cluster_mode = "active"
 
 # Apply changes
-terraform apply -var-file=environments/drprod/terraform.tfvars
+terraform apply -var-file=environments/drprod/terraform.tfvars -input=false
 ```
 
 #### Step 3: Restore Database (15 min)
@@ -274,16 +274,17 @@ kubectl rollout status deployment/myapp -n production
 
 ### Test Script
 
+Variables are supplied only via `terraform.tfvars` (declarative). Set `dr_desired_capacity` in `environments/drprod/terraform.tfvars` before apply; do not use `-var` overrides.
+
 ```bash
 #!/bin/bash
 # dr-drill.sh
 
 echo "Starting DR Drill..."
 
-# 1. Scale up DR
+# 1. Scale up DR: set dr_desired_capacity = 4 in environments/drprod/terraform.tfvars
 cd dr-infrastructure
-terraform apply -var-file=environments/drprod/terraform.tfvars \
-  -var="dr_desired_capacity=4"
+terraform apply -var-file=environments/drprod/terraform.tfvars -input=false -auto-approve
 
 # 2. Connect to DR cluster
 aws eks update-kubeconfig --region us-east-1 --name pipeops-drprod-eks
@@ -298,9 +299,8 @@ curl http://$(kubectl get svc dr-test -o jsonpath='{.status.loadBalancer.ingress
 # 5. Cleanup
 kubectl delete -f tests/dr-test-app.yaml
 
-# 6. Scale down
-terraform apply -var-file=environments/drprod/terraform.tfvars \
-  -var="dr_desired_capacity=2"
+# 6. Scale down: set dr_desired_capacity = 2 in environments/drprod/terraform.tfvars, then:
+terraform apply -var-file=environments/drprod/terraform.tfvars -input=false -auto-approve
 
 echo "DR Drill Complete"
 ```
@@ -337,10 +337,10 @@ aws ecr describe-registry --region us-east-1
 | Component | Monthly Cost |
 |-----------|--------------|
 | DR EKS Cluster (Standby) | ~$243 |
-| DR NAT Gateways | ~$100 |
+| DR NAT Gateway (single) | ~$32 |
 | Cross-Region Backup Storage | ~$20 |
 | ECR Replication Transfer | ~$10 |
-| **Total DR Cost** | **~$373/month** |
+| **Total DR Cost** | **~$305/month** |
 
 ---
 

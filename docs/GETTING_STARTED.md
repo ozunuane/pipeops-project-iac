@@ -72,15 +72,13 @@ This creates:
 
 ### Step 4: Configure Variables
 
+Variables are supplied **only** via `environments/<ENV>/terraform.tfvars` (declarative). Do not use `-var` overrides. Use `make plan ENV=<env>` and `make apply ENV=<env>` so the Makefile passes the correct `-var-file`.
+
 ```bash
-# Copy example configuration
-cp terraform.tfvars.example terraform.tfvars
-
-# Or use environment-specific config
-cp environments/prod/terraform.tfvars terraform.tfvars
-
-# Edit configuration
-vim terraform.tfvars
+# Copy example and edit per environment
+cp terraform.tfvars.example environments/prod/terraform.tfvars
+# Or edit existing: environments/dev/terraform.tfvars, etc.
+vim environments/prod/terraform.tfvars
 ```
 
 Key variables to configure:
@@ -91,9 +89,11 @@ project_name = "pipeops"
 environment  = "prod"
 region       = "us-west-2"
 
-# EKS
+# EKS / RDS – optional creation per environment
+create_eks         = true   # Set false to skip EKS and EKS-dependent resources
+create_rds         = true   # Set false to skip RDS and DB-related resources
 kubernetes_version = "1.33"
-cluster_exists     = false  # Set to true after first deployment
+cluster_exists     = false  # Set to true after first EKS deployment (enables Helm, Karpenter, etc.)
 
 # RDS
 db_instance_class    = "db.r6g.large"
@@ -126,22 +126,29 @@ git push origin main
 
 ### Option 2: Local Deployment
 
+Use the **Makefile** (recommended). Variables come only from `-var-file`; no `-var` overrides.
+
 #### Initialize Terraform
 
 ```bash
-terraform init -backend-config=environments/prod/backend.conf
+make init ENV=prod
+# Or: terraform init -backend-config=environments/prod/backend.conf -reconfigure
 ```
 
 #### Plan Changes
 
 ```bash
-terraform plan -var-file=environments/prod/terraform.tfvars -out=tfplan
+make plan ENV=prod
+# Or: terraform plan -var-file=environments/prod/terraform.tfvars -no-color -input=false
 ```
+
+To save a plan for apply: use `make plan-no-refresh ENV=prod` then `make apply-plan ENV=prod` when the EKS exec role does not yet have EKS access (e.g. first CI run). See [Makefile](../Makefile) help.
 
 #### Apply Changes
 
 ```bash
-terraform apply tfplan
+make apply ENV=prod
+# Or: terraform apply -var-file=environments/prod/terraform.tfvars -input=false
 ```
 
 ### Two-Phase Deployment
@@ -150,13 +157,18 @@ For initial deployment, use two phases:
 
 ```bash
 # Phase 1: Infrastructure only (EKS not ready yet)
-# Set cluster_exists = false in terraform.tfvars
-terraform apply -var-file=environments/prod/terraform.tfvars
+# Set cluster_exists = false in environments/prod/terraform.tfvars
+make apply ENV=prod
 
-# Phase 2: Kubernetes resources
-# Set cluster_exists = true in terraform.tfvars
-terraform apply -var-file=environments/prod/terraform.tfvars
+# Phase 2: Kubernetes resources (Helm, Karpenter, etc.)
+# Set cluster_exists = true in environments/prod/terraform.tfvars
+make apply ENV=prod
 ```
+
+### EKS Access (CI / existing clusters)
+
+- **Setup prerequisites** creates an EKS Terraform exec role and writes `environments/<ENV>/eks-exec-role-arn.txt`. Terraform uses this for `aws eks get-token --role-arn` when talking to EKS.
+- For **existing clusters**, run `make bootstrap-eks-access ENV=prod` once (with an identity that already has EKS admin, e.g. root) to register the eks-exec role before running full plan/apply.
 
 ---
 

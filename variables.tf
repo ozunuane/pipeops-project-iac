@@ -58,6 +58,18 @@ variable "cluster_exists" {
   default     = false
 }
 
+variable "create_eks" {
+  description = "Create EKS cluster and related resources (Helm add-ons, access entries, etc.). Set false to skip EKS entirely."
+  type        = bool
+  default     = true
+}
+
+variable "create_rds" {
+  description = "Create RDS instance and related resources. Set false to skip RDS entirely."
+  type        = bool
+  default     = true
+}
+
 variable "enable_argocd" {
   description = "Enable ArgoCD installation"
   type        = bool
@@ -128,10 +140,20 @@ variable "enable_aws_load_balancer_controller_addon" {
   default     = false
 }
 
-variable "cluster_access_iam_principal_arns" {
-  description = "IAM user/role ARNs to grant EKS cluster admin access (kubectl, Helm). Use 'aws sts get-caller-identity' to get your ARN. Prefer IAM users/roles over root."
-  type        = list(string)
-  default     = []
+variable "cluster_access_entries" {
+  description = "EKS access entries: key = label, value = { principal_arn, level, namespaces? }. Levels: admin (full), devops (edit cluster), dev (edit), qa (view-only). Optional namespaces = list for dev/qa to scope access."
+  type = map(object({
+    principal_arn = string
+    level         = string # admin | devops | dev | qa
+    namespaces    = optional(list(string))
+  }))
+  default = {}
+}
+
+variable "eks_exec_role_arn" {
+  description = "IAM role ARN for aws eks get-token --role-arn. CI (OIDC) assumes this role for EKS; only this role needs Access Entry. Overrides eks-exec-role-arn.txt when set. Setup-prerequisites creates the role and writes the file."
+  type        = string
+  default     = ""
 }
 
 variable "db_instance_class" {

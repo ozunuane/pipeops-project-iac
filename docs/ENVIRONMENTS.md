@@ -48,11 +48,13 @@ project_name = "pipeops"
 environment  = "dev"
 region       = "us-west-2"
 
-# Minimal EKS
+# EKS / RDS – set false to skip creation
+create_eks   = true
+create_rds   = false  # e.g. dev without RDS
+cluster_exists = true
 kubernetes_version = "1.33"
-cluster_exists     = true
 
-# Small RDS
+# Small RDS (when create_rds = true)
 db_instance_class    = "db.t3.medium"
 db_allocated_storage = 100
 db_multi_az          = false
@@ -81,9 +83,10 @@ project_name = "pipeops"
 environment  = "staging"
 region       = "us-west-2"
 
-# Moderate EKS
+create_eks   = true
+create_rds   = true
+cluster_exists = true
 kubernetes_version = "1.33"
-cluster_exists     = true
 
 # Medium RDS
 db_instance_class    = "db.t3.large"
@@ -114,9 +117,10 @@ project_name = "pipeops"
 environment  = "prod"
 region       = "us-west-2"
 
-# Full EKS
+create_eks   = true
+create_rds   = true
+cluster_exists = true
 kubernetes_version = "1.33"
-cluster_exists     = true
 
 # Large RDS with DR
 db_instance_class              = "db.r6g.large"
@@ -174,30 +178,40 @@ encrypt        = true
 
 ## Deployment Commands
 
+Variables are supplied **only** via `environments/<ENV>/terraform.tfvars` (declarative). Use the **Makefile** with `ENV=dev|staging|prod`; it passes `-var-file` only (no `-var` overrides).
+
 ### Deploy to Specific Environment
 
 ```bash
 # Development
-terraform init -backend-config=environments/dev/backend.conf
-terraform plan -var-file=environments/dev/terraform.tfvars
-terraform apply -var-file=environments/dev/terraform.tfvars
+make init ENV=dev
+make plan ENV=dev
+make apply ENV=dev
 
 # Staging
-terraform init -backend-config=environments/staging/backend.conf -reconfigure
-terraform plan -var-file=environments/staging/terraform.tfvars
-terraform apply -var-file=environments/staging/terraform.tfvars
+make init ENV=staging
+make plan ENV=staging
+make apply ENV=staging
 
 # Production
+make init ENV=prod
+make plan ENV=prod
+make apply ENV=prod
+```
+
+Equivalents without Makefile:
+
+```bash
 terraform init -backend-config=environments/prod/backend.conf -reconfigure
-terraform plan -var-file=environments/prod/terraform.tfvars
-terraform apply -var-file=environments/prod/terraform.tfvars
+terraform plan -var-file=environments/prod/terraform.tfvars -no-color -input=false
+terraform apply -var-file=environments/prod/terraform.tfvars -input=false
 ```
 
 ### Switch Between Environments
 
 ```bash
-# Re-initialize with different backend
-terraform init -backend-config=environments/staging/backend.conf -reconfigure
+make init ENV=staging
+# Or: terraform init -backend-config=environments/staging/backend.conf -reconfigure
 ```
 
 ---
@@ -282,6 +296,8 @@ git push origin main
 
 | Feature | Dev | Staging | Prod |
 |---------|-----|---------|------|
+| EKS (`create_eks`) | ✅ | ✅ | ✅ |
+| RDS (`create_rds`) | Optional | ✅ | ✅ |
 | Multi-AZ RDS | ❌ | ✅ | ✅ |
 | Read Replicas | ❌ | ❌ | ✅ |
 | Cross-Region Backups | ❌ | ❌ | ✅ |
@@ -289,6 +305,8 @@ git push origin main
 | ECR Replication | ❌ | ❌ | ✅ |
 | Monitoring | ✅ | ✅ | ✅ |
 | ArgoCD HA | ❌ | ❌ | ✅ |
+
+Set `create_eks` or `create_rds` to `false` in `terraform.tfvars` to skip EKS or RDS (and their dependent resources) for that environment.
 
 ### Conditional Configuration
 
@@ -311,7 +329,7 @@ db_instance_class = var.environment == "prod" ? "db.r6g.large" : "db.t3.medium"
 | EKS Cluster | $73 | $73 | $73 |
 | EKS Nodes | ~$60 | ~$120 | ~$300 |
 | RDS | ~$50 | ~$100 | ~$280 |
-| NAT Gateways | ~$100 | ~$100 | ~$100 |
+| NAT Gateway (single regional) | ~$32 | ~$32 | ~$32 |
 | Data Transfer | ~$10 | ~$20 | ~$50 |
 | DR (us-east-1) | - | - | ~$300 |
 | **Total** | **~$300** | **~$400** | **~$1,100** |
@@ -325,8 +343,7 @@ db_instance_class = var.environment == "prod" ? "db.r6g.large" : "db.t3.medium"
 ```bash
 # Destroy development (be careful!)
 terraform destroy -var-file=environments/dev/terraform.tfvars
-
-# Manual confirmation required
+# Manual confirmation required. Vars from tfvars only; no -var overrides.
 ```
 
 ### Cleanup Backend Resources

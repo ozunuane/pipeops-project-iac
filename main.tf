@@ -24,8 +24,8 @@ provider "aws" {
 locals {
   cluster_name = "${var.project_name}-${var.environment}-eks"
 
-  # Generate a random password for the database
-  db_password = random_password.db_password.result
+  # Generate a random password for the database (only when create_rds)
+  db_password = var.create_rds ? random_password.db_password[0].result : ""
 
   # Generate Grafana admin password
   grafana_admin_password = random_password.grafana_admin.result
@@ -33,6 +33,8 @@ locals {
 
 # Random passwords for security
 resource "random_password" "db_password" {
+  count = var.create_rds ? 1 : 0
+
   length = 16
   # RDS does not allow: '/', '@', '"', or space in passwords
   special          = true
@@ -63,8 +65,9 @@ module "vpc" {
   tags                  = var.tags
 }
 
-# EKS Module
+# EKS Module (optional: set create_eks = false to skip)
 module "eks" {
+  count  = var.create_eks ? 1 : 0
   source = "./modules/eks"
 
   cluster_name                              = local.cluster_name
@@ -82,9 +85,10 @@ module "eks" {
   tags                                      = var.tags
 }
 
-# RDS Module with Multi-AZ and Read Replica support
+# RDS Module with Multi-AZ and Read Replica support (optional: set create_rds = false to skip)
 # Note: Cross-region DR replica is now managed by the DR workspace
 module "rds" {
+  count  = var.create_rds ? 1 : 0
   source = "./modules/rds"
 
   providers = {
@@ -97,7 +101,7 @@ module "rds" {
   region                  = var.region
   vpc_id                  = module.vpc.vpc_id
   db_subnet_group_name    = module.vpc.database_subnet_group_name
-  allowed_security_groups = [module.eks.node_security_group_id]
+  allowed_security_groups = var.create_eks ? [module.eks[0].node_security_group_id] : []
   allowed_cidr_blocks     = [module.vpc.vpc_cidr_block]
   database_password       = local.db_password
   db_instance_class       = var.db_instance_class
@@ -135,14 +139,16 @@ module "rds" {
 
 # Configure Kubernetes and Helm providers for EKS
 # Use exec-based auth (aws eks get-token) so tokens stay fresh during long applies.
-# Static tokens from aws_eks_cluster_auth expire ~15min and cause "credentials" errors.
+# When eks_exec_role_arn / eks-exec-role-arn.txt is set, exec uses --role-arn so CI (OIDC) assumes
+# that role for EKS; only the exec role needs an Access Entry.
+# When create_eks = false, providers point at localhost (no cluster).
 provider "kubernetes" {
-  host                   = var.cluster_exists ? module.eks.cluster_endpoint : "https://localhost"
-  cluster_ca_certificate = var.cluster_exists ? base64decode(module.eks.cluster_certificate_authority_data) : ""
+  host                   = var.create_eks && var.cluster_exists ? module.eks[0].cluster_endpoint : "https://localhost"
+  cluster_ca_certificate = var.create_eks && var.cluster_exists ? base64decode(module.eks[0].cluster_certificate_authority_data) : ""
   exec {
     api_version = "client.authentication.k8s.io/v1beta1"
     command     = "aws"
-    args        = ["eks", "get-token", "--cluster-name", module.eks.cluster_name]
+    args        = local._get_token_args
     env = {
       AWS_REGION = var.region
     }
@@ -151,12 +157,12 @@ provider "kubernetes" {
 
 provider "helm" {
   kubernetes {
-    host                   = var.cluster_exists ? module.eks.cluster_endpoint : "https://localhost"
-    cluster_ca_certificate = var.cluster_exists ? base64decode(module.eks.cluster_certificate_authority_data) : ""
+    host                   = var.create_eks && var.cluster_exists ? module.eks[0].cluster_endpoint : "https://localhost"
+    cluster_ca_certificate = var.create_eks && var.cluster_exists ? base64decode(module.eks[0].cluster_certificate_authority_data) : ""
     exec {
       api_version = "client.authentication.k8s.io/v1beta1"
       command     = "aws"
-      args        = ["eks", "get-token", "--cluster-name", module.eks.cluster_name]
+      args        = local._get_token_args
       env = {
         AWS_REGION = var.region
       }
@@ -165,13 +171,13 @@ provider "helm" {
 }
 
 provider "kubectl" {
-  host                   = var.cluster_exists ? module.eks.cluster_endpoint : "https://localhost"
-  cluster_ca_certificate = var.cluster_exists ? base64decode(module.eks.cluster_certificate_authority_data) : ""
+  host                   = var.create_eks && var.cluster_exists ? module.eks[0].cluster_endpoint : "https://localhost"
+  cluster_ca_certificate = var.create_eks && var.cluster_exists ? base64decode(module.eks[0].cluster_certificate_authority_data) : ""
   load_config_file       = false
   exec {
     api_version = "client.authentication.k8s.io/v1beta1"
     command     = "aws"
-    args        = ["eks", "get-token", "--cluster-name", module.eks.cluster_name]
+    args        = local._get_token_args
     env = {
       AWS_REGION = var.region
     }
@@ -181,9 +187,9 @@ provider "kubectl" {
 # AWS Load Balancer Controller is installed via EKS addon (modules/eks).
 # ==========================================
 
-# Monitoring Module - Only deploy when cluster exists
+# Monitoring Module - Only deploy when EKS exists and cluster is ready
 module "monitoring" {
-  count = var.cluster_exists && var.enable_monitoring ? 1 : 0
+  count = var.create_eks && var.cluster_exists && var.enable_monitoring ? 1 : 0
 
   source = "./modules/monitoring"
 
@@ -197,17 +203,17 @@ module "monitoring" {
   prometheus_domain      = "prometheus.${var.project_name}.com"
   alertmanager_domain    = "alertmanager.${var.project_name}.com"
   grafana_admin_password = local.grafana_admin_password
-  oidc_provider_arn      = module.eks.oidc_provider_arn
-  oidc_issuer_url        = module.eks.cluster_oidc_issuer_url
+  oidc_provider_arn      = var.create_eks ? module.eks[0].oidc_provider_arn : ""
+  oidc_issuer_url        = var.create_eks ? module.eks[0].cluster_oidc_issuer_url : ""
   tags                   = var.tags
 
-  depends_on = [module.eks]
+  depends_on = [module.eks, aws_eks_access_policy_association.cluster_scoped]
 }
 
 # External Secrets Operator for AWS Secrets Manager integration
-# Only deploy when cluster exists
+# Only deploy when EKS exists and cluster is ready
 resource "helm_release" "external_secrets" {
-  count = var.cluster_exists ? 1 : 0
+  count = var.create_eks && var.cluster_exists ? 1 : 0
 
   name             = "external-secrets"
   repository       = "https://charts.external-secrets.io"
@@ -228,12 +234,12 @@ resource "helm_release" "external_secrets" {
     value = "true"
   }
 
-  depends_on = [module.eks]
+  depends_on = [module.eks, aws_eks_access_policy_association.cluster_scoped]
 }
 
-# IAM role for External Secrets Operator - Only when cluster exists
+# IAM role for External Secrets Operator - Only when EKS exists and cluster is ready
 resource "aws_iam_role" "external_secrets" {
-  count = var.cluster_exists ? 1 : 0
+  count = var.create_eks && var.cluster_exists ? 1 : 0
   name  = "${local.cluster_name}-external-secrets"
 
   assume_role_policy = jsonencode({
@@ -243,12 +249,12 @@ resource "aws_iam_role" "external_secrets" {
         Action = "sts:AssumeRole"
         Effect = "Allow"
         Principal = {
-          Federated = module.eks.oidc_provider_arn
+          Federated = var.create_eks ? module.eks[0].oidc_provider_arn : "arn:aws:iam::000000000000:oidc-provider/local"
         }
         Condition = {
           StringEquals = {
-            "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:sub" : "system:serviceaccount:external-secrets-system:external-secrets"
-            "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:aud" : "sts.amazonaws.com"
+            "${replace(var.create_eks ? module.eks[0].cluster_oidc_issuer_url : "https://local", "https://", "")}:sub" : "system:serviceaccount:external-secrets-system:external-secrets"
+            "${replace(var.create_eks ? module.eks[0].cluster_oidc_issuer_url : "https://local", "https://", "")}:aud" : "sts.amazonaws.com"
           }
         }
       }
@@ -260,7 +266,7 @@ resource "aws_iam_role" "external_secrets" {
 
 # IAM policy for External Secrets Operator
 resource "aws_iam_role_policy" "external_secrets" {
-  count = var.cluster_exists ? 1 : 0
+  count = var.create_eks && var.cluster_exists ? 1 : 0
   name  = "${local.cluster_name}-external-secrets"
   role  = aws_iam_role.external_secrets[0].id
 

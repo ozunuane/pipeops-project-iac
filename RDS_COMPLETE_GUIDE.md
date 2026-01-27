@@ -302,6 +302,8 @@ aws sns subscribe \
 
 ### Step 2: Configure Terraform
 
+Variables are **declarative only** via `terraform.tfvars` (no `-var` overrides). Prefer the Makefile with `ENV=prod` so `-var-file=environments/prod/terraform.tfvars` is used.
+
 ```bash
 # Choose your environment
 cd /path/to/pipeops-project-iac
@@ -329,14 +331,17 @@ db_monitoring_sns_topic_arn = "arn:aws:sns:us-west-2:ACCOUNT:pipeops-rds-prod-al
 ### Step 4: Initialize and Deploy
 
 ```bash
-# Initialize Terraform
-terraform init
+# Initialize Terraform (recommended: use Makefile)
+make init ENV=prod
+# Or: terraform init -backend-config=environments/prod/backend.conf -reconfigure
 
-# Review plan
-terraform plan
+# Review plan (uses -var-file=environments/prod/terraform.tfvars only)
+make plan ENV=prod
+# Or: terraform plan -var-file=environments/prod/terraform.tfvars -no-color -input=false
 
 # Deploy (takes 1-2 hours with DR)
-terraform apply
+make apply ENV=prod
+# Or: terraform apply -var-file=environments/prod/terraform.tfvars -input=false
 
 # Verify deployment
 terraform output rds_endpoint
@@ -721,28 +726,32 @@ aws rds describe-db-engine-versions \
   --engine postgres \
   --engine-version 15
 
-# Upgrade (during maintenance window)
-terraform apply -var="postgres_version=15.5"
+# Upgrade (during maintenance window): set in terraform.tfvars (declarative; no -var)
+# db_postgres_version = "15.5"
+# Then apply:
+terraform apply -var-file=environments/prod/terraform.tfvars -input=false
 ```
 
 #### Scale Instance Size
 
 ```bash
-# Update terraform.tfvars
+# Update environments/<ENV>/terraform.tfvars (declarative; no -var)
 db_instance_class = "db.r6g.2xlarge"
 
 # Apply (minimal downtime with Multi-AZ)
-terraform apply
+make apply ENV=prod
+# Or: terraform apply -var-file=environments/prod/terraform.tfvars -input=false
 ```
 
 #### Add/Remove Read Replicas
 
 ```bash
-# Update terraform.tfvars
+# Update environments/<ENV>/terraform.tfvars
 db_read_replica_count = 3  # Changed from 2
 
 # Apply
-terraform apply
+make apply ENV=prod
+# Or: terraform apply -var-file=environments/prod/terraform.tfvars -input=false
 ```
 
 ### Backup Management
