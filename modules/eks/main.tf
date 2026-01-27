@@ -577,13 +577,11 @@ resource "aws_iam_role_policy" "karpenter" {
 }
 
 data "aws_iam_policy_document" "karpenter" {
+  # Describe* etc. do not send request tags; separate statement, no condition.
   statement {
-    sid    = "EC2Scoped"
+    sid    = "EC2Describe"
     effect = "Allow"
     actions = [
-      "ec2:CreateFleet",
-      "ec2:CreateLaunchTemplate",
-      "ec2:CreateTags",
       "ec2:DescribeAvailabilityZones",
       "ec2:DescribeImages",
       "ec2:DescribeInstances",
@@ -592,10 +590,18 @@ data "aws_iam_policy_document" "karpenter" {
       "ec2:DescribeLaunchTemplates",
       "ec2:DescribeSecurityGroups",
       "ec2:DescribeSpotPriceHistory",
-      "ec2:DescribeSubnets",
-      "ec2:DeleteLaunchTemplate",
-      "ec2:RunInstances",
-      "ec2:TerminateInstances"
+      "ec2:DescribeSubnets"
+    ]
+    resources = ["*"]
+  }
+  statement {
+    sid    = "EC2Scoped"
+    effect = "Allow"
+    actions = [
+      "ec2:CreateFleet",
+      "ec2:CreateLaunchTemplate",
+      "ec2:CreateTags",
+      "ec2:RunInstances"
     ]
     resources = ["*"]
     condition {
@@ -643,10 +649,16 @@ data "aws_iam_policy_document" "karpenter" {
     }
   }
   statement {
+    sid       = "IAMInstanceProfile"
+    effect    = "Allow"
+    actions   = ["iam:GetInstanceProfile", "iam:GetRole"]
+    resources = ["*"]
+  }
+  statement {
     sid       = "SSM"
     effect    = "Allow"
-    actions   = ["ssm:GetParameter"]
-    resources = ["arn:aws:ssm:*:*:parameter/aws/service/eks/optimized-ami/*"]
+    actions   = ["ssm:GetParameter", "ssm:GetParametersByPath"]
+    resources = ["arn:aws:ssm:*:*:parameter/aws/service/eks/optimized-ami/*", "arn:aws:ssm:*:*:parameter/aws/service/eks/optimized-ami/*/*"]
   }
   statement {
     sid       = "Pricing"

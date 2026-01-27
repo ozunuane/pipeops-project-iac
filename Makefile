@@ -1,4 +1,7 @@
 # Terraform Makefile - always use backend-config + var-file per environment
+# Variables are passed only declaratively via the tfvars file (-var-file).
+# Do not use -var overrides; set create_eks, create_rds, etc. in tfvars.
+#
 # Usage:
 #   make init ENV=prod
 #   make plan ENV=prod
@@ -37,7 +40,7 @@ help:
 	@echo "    - Import existing EKS node IAM role & instance profile (fix 'EntityAlreadyExists')"
 	@echo ""
 	@echo "Backend: environments/$(ENV)/backend.conf"
-	@echo "Vars:    environments/$(ENV)/terraform.tfvars"
+	@echo "Vars:    environments/$(ENV)/terraform.tfvars (declarative only; no -var)"
 	@echo ""
 	@echo "Stale state lock? terraform force-unlock <LOCK_ID>"
 

@@ -4,9 +4,9 @@
 # Automated backups of EKS cluster resources and persistent volumes
 # Schedule: Daily at 6:00 AM UTC
 
-# Enable AWS Backup for EKS only when cluster exists
+# Enable AWS Backup for EKS only when EKS is created and cluster exists
 resource "aws_backup_vault" "eks" {
-  count = var.cluster_exists && var.enable_eks_backup ? 1 : 0
+  count = var.create_eks && var.cluster_exists && var.enable_eks_backup ? 1 : 0
 
   name        = "${var.project_name}-${var.environment}-eks-backup-vault"
   kms_key_arn = aws_kms_key.backup[0].arn
@@ -20,7 +20,7 @@ resource "aws_backup_vault" "eks" {
 
 # KMS key for backup encryption
 resource "aws_kms_key" "backup" {
-  count = var.cluster_exists && var.enable_eks_backup ? 1 : 0
+  count = var.create_eks && var.cluster_exists && var.enable_eks_backup ? 1 : 0
 
   description             = "KMS key for AWS Backup encryption - ${var.project_name}-${var.environment}"
   deletion_window_in_days = 30
@@ -33,7 +33,7 @@ resource "aws_kms_key" "backup" {
 }
 
 resource "aws_kms_alias" "backup" {
-  count = var.cluster_exists && var.enable_eks_backup ? 1 : 0
+  count = var.create_eks && var.cluster_exists && var.enable_eks_backup ? 1 : 0
 
   name          = "alias/${var.project_name}-${var.environment}-backup"
   target_key_id = aws_kms_key.backup[0].key_id
@@ -41,7 +41,7 @@ resource "aws_kms_alias" "backup" {
 
 # Backup plan - Daily at 6:00 AM UTC
 resource "aws_backup_plan" "eks_daily" {
-  count = var.cluster_exists && var.enable_eks_backup ? 1 : 0
+  count = var.create_eks && var.cluster_exists && var.enable_eks_backup ? 1 : 0
 
   name = "${var.project_name}-${var.environment}-eks-daily-backup"
 
@@ -104,7 +104,7 @@ resource "aws_backup_plan" "eks_daily" {
 
 # Backup selection - What to backup
 resource "aws_backup_selection" "eks" {
-  count = var.cluster_exists && var.enable_eks_backup ? 1 : 0
+  count = var.create_eks && var.cluster_exists && var.enable_eks_backup ? 1 : 0
 
   name         = "${var.project_name}-${var.environment}-eks-backup-selection"
   plan_id      = aws_backup_plan.eks_daily[0].id
@@ -112,7 +112,7 @@ resource "aws_backup_selection" "eks" {
 
   # Backup the EKS cluster
   resources = [
-    module.eks.cluster_arn
+    module.eks[0].cluster_arn
   ]
 
   # Additional selection by tags (backup all resources with these tags)
@@ -125,7 +125,7 @@ resource "aws_backup_selection" "eks" {
 
 # IAM role for AWS Backup
 resource "aws_iam_role" "backup" {
-  count = var.cluster_exists && var.enable_eks_backup ? 1 : 0
+  count = var.create_eks && var.cluster_exists && var.enable_eks_backup ? 1 : 0
 
   name = "${var.project_name}-${var.environment}-aws-backup-role"
 
@@ -150,14 +150,14 @@ resource "aws_iam_role" "backup" {
 
 # Attach AWS managed policies for backup
 resource "aws_iam_role_policy_attachment" "backup_policy" {
-  count = var.cluster_exists && var.enable_eks_backup ? 1 : 0
+  count = var.create_eks && var.cluster_exists && var.enable_eks_backup ? 1 : 0
 
   role       = aws_iam_role.backup[0].name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup"
 }
 
 resource "aws_iam_role_policy_attachment" "restore_policy" {
-  count = var.cluster_exists && var.enable_eks_backup ? 1 : 0
+  count = var.create_eks && var.cluster_exists && var.enable_eks_backup ? 1 : 0
 
   role       = aws_iam_role.backup[0].name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores"
@@ -165,7 +165,7 @@ resource "aws_iam_role_policy_attachment" "restore_policy" {
 
 # Additional policy for EKS backup
 resource "aws_iam_role_policy" "backup_eks" {
-  count = var.cluster_exists && var.enable_eks_backup ? 1 : 0
+  count = var.create_eks && var.cluster_exists && var.enable_eks_backup ? 1 : 0
 
   name = "${var.project_name}-${var.environment}-backup-eks-policy"
   role = aws_iam_role.backup[0].id
@@ -211,7 +211,7 @@ resource "aws_iam_role_policy" "backup_eks" {
 # Backup vault in DR region for cross-region copy
 
 resource "aws_backup_vault" "eks_dr" {
-  count    = var.cluster_exists && var.enable_eks_backup && var.enable_backup_cross_region_copy ? 1 : 0
+  count    = var.create_eks && var.cluster_exists && var.enable_eks_backup && var.enable_backup_cross_region_copy ? 1 : 0
   provider = aws.disaster_recovery
 
   name        = "${var.project_name}-${var.environment}-eks-backup-vault-dr"
@@ -226,7 +226,7 @@ resource "aws_backup_vault" "eks_dr" {
 }
 
 resource "aws_kms_key" "backup_dr" {
-  count    = var.cluster_exists && var.enable_eks_backup && var.enable_backup_cross_region_copy ? 1 : 0
+  count    = var.create_eks && var.cluster_exists && var.enable_eks_backup && var.enable_backup_cross_region_copy ? 1 : 0
   provider = aws.disaster_recovery
 
   description             = "KMS key for AWS Backup encryption (DR) - ${var.project_name}-${var.environment}"
@@ -241,7 +241,7 @@ resource "aws_kms_key" "backup_dr" {
 }
 
 resource "aws_kms_alias" "backup_dr" {
-  count    = var.cluster_exists && var.enable_eks_backup && var.enable_backup_cross_region_copy ? 1 : 0
+  count    = var.create_eks && var.cluster_exists && var.enable_eks_backup && var.enable_backup_cross_region_copy ? 1 : 0
   provider = aws.disaster_recovery
 
   name          = "alias/${var.project_name}-${var.environment}-backup-dr"

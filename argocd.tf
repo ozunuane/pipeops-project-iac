@@ -12,7 +12,7 @@
 # ==========================================
 
 resource "helm_release" "argocd" {
-  count = var.cluster_exists && var.enable_argocd ? 1 : 0
+  count = var.create_eks && var.cluster_exists && var.enable_argocd ? 1 : 0
 
   name             = "argocd"
   repository       = "https://argoproj.github.io/argo-helm"

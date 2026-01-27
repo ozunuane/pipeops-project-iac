@@ -8,7 +8,7 @@
 
 # SQS Queue for Karpenter spot interruption handling
 resource "aws_sqs_queue" "karpenter" {
-  count                     = var.cluster_exists ? 1 : 0
+  count                     = var.create_eks && var.cluster_exists ? 1 : 0
   name                      = "${local.cluster_name}-karpenter-interruption"
   tags                      = merge(var.tags, { "karpenter.sh/cluster" = local.cluster_name })
   message_retention_seconds = 300
@@ -16,7 +16,7 @@ resource "aws_sqs_queue" "karpenter" {
 }
 
 resource "aws_sqs_queue_policy" "karpenter" {
-  count     = var.cluster_exists ? 1 : 0
+  count     = var.create_eks && var.cluster_exists ? 1 : 0
   queue_url = aws_sqs_queue.karpenter[0].id
   policy = jsonencode({
     Version = "2012-10-17"
@@ -39,7 +39,7 @@ resource "aws_sqs_queue_policy" "karpenter" {
 
 # EventBridge rule for EC2 Spot Instance Interruption Warning
 resource "aws_cloudwatch_event_rule" "karpenter_interruption" {
-  count = var.cluster_exists ? 1 : 0
+  count = var.create_eks && var.cluster_exists ? 1 : 0
   name  = "${local.cluster_name}-karpenter-interruption"
   tags  = var.tags
   event_pattern = jsonencode({
@@ -49,16 +49,16 @@ resource "aws_cloudwatch_event_rule" "karpenter_interruption" {
 }
 
 resource "aws_cloudwatch_event_target" "karpenter_interruption" {
-  count = var.cluster_exists ? 1 : 0
+  count = var.create_eks && var.cluster_exists ? 1 : 0
   rule  = aws_cloudwatch_event_rule.karpenter_interruption[0].name
   arn   = aws_sqs_queue.karpenter[0].arn
 }
 
 # IAM policy for Karpenter to consume SQS (spot interruptions)
 resource "aws_iam_role_policy" "karpenter_interruption" {
-  count = var.cluster_exists ? 1 : 0
+  count = var.create_eks && var.cluster_exists ? 1 : 0
   name  = "${local.cluster_name}-karpenter-interruption"
-  role  = module.eks.karpenter_role_name
+  role  = module.eks[0].karpenter_role_name
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -73,7 +73,7 @@ resource "aws_iam_role_policy" "karpenter_interruption" {
 
 # Helm release - Karpenter
 resource "helm_release" "karpenter" {
-  count = var.cluster_exists ? 1 : 0
+  count = var.create_eks && var.cluster_exists ? 1 : 0
 
   name             = "karpenter"
   repository       = "oci://public.ecr.aws/karpenter"
@@ -87,7 +87,7 @@ resource "helm_release" "karpenter" {
 
   set {
     name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-    value = module.eks.karpenter_role_arn
+    value = module.eks[0].karpenter_role_arn
   }
   set {
     name  = "settings.clusterName"
@@ -95,7 +95,7 @@ resource "helm_release" "karpenter" {
   }
   set {
     name  = "settings.defaultInstanceProfile"
-    value = module.eks.node_instance_profile_name
+    value = module.eks[0].node_instance_profile_name
   }
   set {
     name  = "settings.interruptionQueue"
@@ -112,7 +112,7 @@ resource "helm_release" "karpenter" {
 # EC2NodeClass - default (subnets/SG via karpenter.sh/discovery)
 # Karpenter 1.5 uses v1 API only. Ref: https://docs.aws.amazon.com/eks/latest/best-practices/karpenter.html
 resource "kubectl_manifest" "karpenter_nodeclass" {
-  count = var.cluster_exists ? 1 : 0
+  count = var.create_eks && var.cluster_exists ? 1 : 0
 
   yaml_body = yamlencode({
     apiVersion = "karpenter.k8s.aws/v1"
@@ -122,7 +122,7 @@ resource "kubectl_manifest" "karpenter_nodeclass" {
       amiFamily = "AL2"
       # v1 requires amiSelectorTerms. Pin alias in prod, e.g. al2@v20240807 (see AWS Karpenter best practices).
       amiSelectorTerms           = [{ alias = "al2@latest" }]
-      role                       = module.eks.node_instance_profile_name
+      instanceProfile            = module.eks[0].node_instance_profile_name
       subnetSelectorTerms        = [{ tags = { "karpenter.sh/discovery" = local.cluster_name } }]
       securityGroupSelectorTerms = [{ tags = { "karpenter.sh/discovery" = local.cluster_name } }]
     }
@@ -134,7 +134,7 @@ resource "kubectl_manifest" "karpenter_nodeclass" {
 # NodePool - default (spot + on-demand, instance types, limits)
 # nodeClassRef uses group/kind/name per v1 API and AWS best practices.
 resource "kubectl_manifest" "karpenter_nodepool" {
-  count = var.cluster_exists ? 1 : 0
+  count = var.create_eks && var.cluster_exists ? 1 : 0
 
   yaml_body = yamlencode({
     apiVersion = "karpenter.sh/v1"
