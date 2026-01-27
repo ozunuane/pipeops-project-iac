@@ -245,10 +245,31 @@ resource "aws_iam_role_policy" "karpenter_controller" {
   })
 }
 
-# Helm release lives in helm_addons.tf.
 
-# EC2NodeClass - default (subnets/SG via karpenter.sh/discovery)
-# Karpenter 1.5 uses v1 API only. Ref: https://docs.aws.amazon.com/eks/latest/best-practices/karpenter.html
+# Get the latest EKS-optimized AMI for Amazon Linux 2
+data "aws_ami" "eks_default" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["amazon-eks-node-${module.eks[0].cluster_version}-v*"]
+  }
+
+  filter {
+    name   = "architecture"
+    values = ["x86_64"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
+
+
+
 resource "kubectl_manifest" "karpenter_nodeclass" {
   count = var.create_eks && var.cluster_exists ? 1 : 0
 
@@ -258,8 +279,10 @@ resource "kubectl_manifest" "karpenter_nodeclass" {
     metadata   = { name = "default" }
     spec = {
       amiFamily = "AL2"
-      # v1 requires amiSelectorTerms. Pin alias in prod, e.g. al2@v20240807 (see AWS Karpenter best practices).
-      amiSelectorTerms           = [{ alias = "al2@v20250109" }]
+      # Use the AMI ID directly instead of alias
+      amiSelectorTerms = [{
+        id = data.aws_ami.eks_default.id
+      }]
       instanceProfile            = module.eks[0].node_instance_profile_name
       subnetSelectorTerms        = [{ tags = { "karpenter.sh/discovery" = local.cluster_name } }]
       securityGroupSelectorTerms = [{ tags = { "karpenter.sh/discovery" = local.cluster_name } }]
@@ -268,6 +291,29 @@ resource "kubectl_manifest" "karpenter_nodeclass" {
 
   depends_on = [helm_release.karpenter[0]]
 }
+# Helm release lives in helm_addons.tf.
+
+# EC2NodeClass - default (subnets/SG via karpenter.sh/discovery)
+# Karpenter 1.5 uses v1 API only. Ref: https://docs.aws.amazon.com/eks/latest/best-practices/karpenter.html
+# resource "kubectl_manifest" "karpenter_nodeclass" {
+#   count = var.create_eks && var.cluster_exists ? 1 : 0
+
+#   yaml_body = yamlencode({
+#     apiVersion = "karpenter.k8s.aws/v1"
+#     kind       = "EC2NodeClass"
+#     metadata   = { name = "default" }
+#     spec = {
+#       amiFamily = "AL2"
+#       # v1 requires amiSelectorTerms. Pin alias in prod, e.g. al2@v20240807 (see AWS Karpenter best practices).
+#       amiSelectorTerms           = [{ alias = "al2@v20250109" }]
+#       instanceProfile            = module.eks[0].node_instance_profile_name
+#       subnetSelectorTerms        = [{ tags = { "karpenter.sh/discovery" = local.cluster_name } }]
+#       securityGroupSelectorTerms = [{ tags = { "karpenter.sh/discovery" = local.cluster_name } }]
+#     }
+#   })
+
+#   depends_on = [helm_release.karpenter[0]]
+# }
 
 # NodePool - default (spot + on-demand, instance types, limits)
 # nodeClassRef uses group/kind/name per v1 API and AWS best practices.
