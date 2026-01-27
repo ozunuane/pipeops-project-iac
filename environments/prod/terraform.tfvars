@@ -18,8 +18,24 @@ database_subnet_cidrs = ["10.0.201.0/24", "10.0.202.0/24", "10.0.203.0/24"]
 kubernetes_version = "1.33"
 cluster_exists     = true # EKS cluster is running - enables Helm resources and backups
 
-# IAM principals with kubectl/admin access. Run: aws sts get-caller-identity --query Arn --output text
-cluster_access_iam_principal_arns = ["arn:aws:iam::742890864997:root"]
+# EKS access by level: admin (full) | devops | dev (edit) | qa (view-only). Optional namespaces = scope dev/qa.
+# Level -> policy: admin=ClusterAdmin, devops/dev=Edit, qa=View. Add namespaces for dev/qa to restrict scope.
+# Keep root as admin to run 'make bootstrap-eks-access' (Terraform uses root; avoids k8s refresh Forbidden).
+cluster_access_entries = {
+  "root" = {
+    principal_arn = "arn:aws:iam::742890864997:root"
+    level         = "admin"
+  }
+  "ozimede-cli" = {
+    principal_arn = "arn:aws:iam::742890864997:user/ozimede-cli"
+    level         = "admin"
+  }
+  # "devops-user" = { principal_arn = "arn:aws:iam::742890864997:user/devops-user", level = "devops" }
+  # "dev-user"    = { principal_arn = "arn:aws:iam::742890864997:user/dev-user", level = "dev" }
+  # "qa-user"     = { principal_arn = "arn:aws:iam::742890864997:user/qa-user", level = "qa" }
+  # Namespace-scoped example (dev only in dev/default):
+  # "dev-ns" = { principal_arn = "arn:aws:iam::742890864997:user/dev-user", level = "dev", namespaces = ["dev", "default"] }
+}
 
 # RDS Configuration - PRODUCTION with Multi-AZ + Read Replicas
 db_instance_class              = "db.m5d.large"               # Larger instance for production
