@@ -67,19 +67,19 @@ module "vpc" {
 module "eks" {
   source = "./modules/eks"
 
-  cluster_name                         = local.cluster_name
-  kubernetes_version                   = var.kubernetes_version
-  vpc_id                               = module.vpc.vpc_id
-  vpc_cidr_block                       = module.vpc.vpc_cidr_block
-  private_subnet_ids                   = module.vpc.private_subnet_ids
-  public_subnet_ids                    = module.vpc.public_subnet_ids
-  cluster_endpoint_public_access_cidrs = ["0.0.0.0/0"]
-  desired_capacity                     = 3
-  min_capacity                         = 1
-  max_capacity                         = 10
-  node_instance_types                         = ["m5.large", "m5.xlarge", "m5.2xlarge"]
-  enable_aws_load_balancer_controller_addon   = var.enable_aws_load_balancer_controller_addon
-  tags                                        = var.tags
+  cluster_name                              = local.cluster_name
+  kubernetes_version                        = var.kubernetes_version
+  vpc_id                                    = module.vpc.vpc_id
+  vpc_cidr_block                            = module.vpc.vpc_cidr_block
+  private_subnet_ids                        = module.vpc.private_subnet_ids
+  public_subnet_ids                         = module.vpc.public_subnet_ids
+  cluster_endpoint_public_access_cidrs      = ["0.0.0.0/0"]
+  desired_capacity                          = 3
+  min_capacity                              = 1
+  max_capacity                              = 10
+  node_instance_types                       = ["m5.large", "m5.xlarge", "m5.2xlarge"]
+  enable_aws_load_balancer_controller_addon = var.enable_aws_load_balancer_controller_addon
+  tags                                      = var.tags
 }
 
 # RDS Module with Multi-AZ and Read Replica support

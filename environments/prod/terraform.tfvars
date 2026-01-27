@@ -26,8 +26,8 @@ db_instance_class              = "db.m5d.large"               # Larger instance 
 db_postgres_version            = "16.6"                       # PostgreSQL 16.6 - available in all AWS regions
 db_allocated_storage           = 400                          # 400 GB initial storage (minimum for provisioned IOPS)
 db_backup_retention            = 30                           # 30 days backup retention
-db_multi_az                    = false                         # ✅ Multi-AZ ENABLED - Critical for HA
-db_create_read_replica         = false                         # ✅ Read replicas ENABLED
+db_multi_az                    = false                        # ✅ Multi-AZ ENABLED - Critical for HA
+db_create_read_replica         = false                        # ✅ Read replicas ENABLED
 db_read_replica_count          = 0                            # 2 read replicas for load distribution
 db_read_replica_instance_class = "db.m5d.large"               # Read replicas can be smaller
 db_replica_availability_zones  = ["us-west-2b", "us-west-2c"] # Spread across AZs
@@ -41,7 +41,7 @@ dr_region = "us-east-1" # DR region (different from us-west-2)
 # Note: DR RDS replica is now managed by DR workspace (dr-infrastructure/)
 # Primary workspace only manages cross-region backup replication
 db_enable_cross_region_backups = false # ✅ Replicate backups to DR region
-db_dr_kms_key_id               = ""   # Optional: KMS key for backup encryption
+db_dr_kms_key_id               = ""    # Optional: KMS key for backup encryption
 
 # DR EKS Cluster Configuration (Production Only)
 dr_vpc_cidr                             = "10.1.0.0/16"
@@ -60,7 +60,7 @@ ecr_repository_names = [
   "titanic-api",
   "karpenter"
 ]
-ecr_enable_replication  = false          # ✅ Enable DR replication for prod
+ecr_enable_replication  = false         # ✅ Enable DR replication for prod
 ecr_replication_regions = ["us-east-1"] # Replicate to DR region
 
 # Feature Flags
