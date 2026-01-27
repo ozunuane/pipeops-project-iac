@@ -29,9 +29,10 @@ help:
 	@echo "  make fmt               - terraform fmt -recursive"
 	@echo ""
 	@echo "  make bootstrap-eks-access ENV=prod"
-	@echo "    - Apply only EKS access entries (-refresh=false). Run with an IAM principal that"
-	@echo "      already has EKS admin (e.g. root). Registers eks-exec role when"
-	@echo "      eks-exec-role-arn.txt exists (setup-prerequisites)."
+	@echo "    - EXISTING clusters only! Apply only EKS access entries (-target, -refresh=false)."
+	@echo "      Do NOT use for greenfield: it skips IGW, NAT, route tables, VPC endpoints, etc."
+	@echo "      Run with IAM that has EKS admin (e.g. root). Registers eks-exec when"
+	@echo "      eks-exec-role-arn.txt exists. For new envs use: make apply ENV=..."
 	@echo ""
 	@echo "  make import-eks-access ENV=prod"
 	@echo "    - Import existing EKS access entries (root, ozimede-cli) into state."
@@ -42,6 +43,7 @@ help:
 	@echo "Backend: environments/$(ENV)/backend.conf"
 	@echo "Vars:    environments/$(ENV)/terraform.tfvars (declarative only; no -var)"
 	@echo ""
+	@echo "State lock 'ResourceNotFoundException'? Run: make init ENV=$(ENV)  (then retry)"
 	@echo "Stale state lock? terraform force-unlock <LOCK_ID>"
 
 check-env:
@@ -84,8 +86,9 @@ import-eks-access: check-env
 	terraform import -var-file=$(VAR_FILE) 'aws_eks_access_entry.cluster_access["ozimede-cli"]' '$(EKS_CLUSTER_NAME):arn:aws:iam::742890864997:user/ozimede-cli'
 	terraform import -var-file=$(VAR_FILE) 'aws_eks_access_entry.cluster_access["root"]' '$(EKS_CLUSTER_NAME):arn:aws:iam::742890864997:root'
 
-bootstrap-eks-access: check-env
-	@echo "Applying EKS access entries only (-refresh=false). Use AWS identity with EKS admin (e.g. root)."
+bootstrap-eks-access: check-env init
+	@echo "Applying EKS access entries only (-target; -refresh=false). EXISTING clusters only!"
+	@echo "Do NOT use for greenfield — use 'make apply ENV=$(ENV)' instead. Use AWS identity with EKS admin (e.g. root)."
 	terraform apply -refresh=false -var-file=$(VAR_FILE) -input=false \
 		-target='aws_eks_access_entry.cluster_access' \
 		-target='aws_eks_access_policy_association.cluster_scoped' \
