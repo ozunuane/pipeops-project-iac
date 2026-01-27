@@ -58,6 +58,18 @@ variable "cluster_exists" {
   default     = false
 }
 
+variable "create_eks" {
+  description = "Create EKS cluster and related resources (Helm add-ons, access entries, etc.). Set false to skip EKS entirely."
+  type        = bool
+  default     = true
+}
+
+variable "create_rds" {
+  description = "Create RDS instance and related resources. Set false to skip RDS entirely."
+  type        = bool
+  default     = true
+}
+
 variable "enable_argocd" {
   description = "Enable ArgoCD installation"
   type        = bool
