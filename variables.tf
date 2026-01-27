@@ -138,6 +138,12 @@ variable "cluster_access_entries" {
   default = {}
 }
 
+variable "eks_exec_role_arn" {
+  description = "IAM role ARN for aws eks get-token --role-arn. CI (OIDC) assumes this role for EKS; only this role needs Access Entry. Overrides eks-exec-role-arn.txt when set. Setup-prerequisites creates the role and writes the file."
+  type        = string
+  default     = ""
+}
+
 variable "db_instance_class" {
   description = "RDS instance class"
   type        = string

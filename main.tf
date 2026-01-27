@@ -135,14 +135,15 @@ module "rds" {
 
 # Configure Kubernetes and Helm providers for EKS
 # Use exec-based auth (aws eks get-token) so tokens stay fresh during long applies.
-# Static tokens from aws_eks_cluster_auth expire ~15min and cause "credentials" errors.
+# When eks_exec_role_arn / eks-exec-role-arn.txt is set, exec uses --role-arn so CI (OIDC) assumes
+# that role for EKS; only the exec role needs an Access Entry.
 provider "kubernetes" {
   host                   = var.cluster_exists ? module.eks.cluster_endpoint : "https://localhost"
   cluster_ca_certificate = var.cluster_exists ? base64decode(module.eks.cluster_certificate_authority_data) : ""
   exec {
     api_version = "client.authentication.k8s.io/v1beta1"
     command     = "aws"
-    args        = ["eks", "get-token", "--cluster-name", module.eks.cluster_name]
+    args        = local._get_token_args
     env = {
       AWS_REGION = var.region
     }
@@ -156,7 +157,7 @@ provider "helm" {
     exec {
       api_version = "client.authentication.k8s.io/v1beta1"
       command     = "aws"
-      args        = ["eks", "get-token", "--cluster-name", module.eks.cluster_name]
+      args        = local._get_token_args
       env = {
         AWS_REGION = var.region
       }
@@ -171,7 +172,7 @@ provider "kubectl" {
   exec {
     api_version = "client.authentication.k8s.io/v1beta1"
     command     = "aws"
-    args        = ["eks", "get-token", "--cluster-name", module.eks.cluster_name]
+    args        = local._get_token_args
     env = {
       AWS_REGION = var.region
     }
@@ -201,7 +202,7 @@ module "monitoring" {
   oidc_issuer_url        = module.eks.cluster_oidc_issuer_url
   tags                   = var.tags
 
-  depends_on = [module.eks]
+  depends_on = [module.eks, aws_eks_access_policy_association.cluster_scoped]
 }
 
 # External Secrets Operator for AWS Secrets Manager integration
@@ -228,7 +229,7 @@ resource "helm_release" "external_secrets" {
     value = "true"
   }
 
-  depends_on = [module.eks]
+  depends_on = [module.eks, aws_eks_access_policy_association.cluster_scoped]
 }
 
 # IAM role for External Secrets Operator - Only when cluster exists
