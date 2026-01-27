@@ -18,14 +18,17 @@ database_subnet_cidrs = ["10.0.201.0/24", "10.0.202.0/24", "10.0.203.0/24"]
 kubernetes_version = "1.33"
 cluster_exists     = true # EKS cluster is running - enables Helm resources and backups
 
+# IAM principals with kubectl/admin access. Run: aws sts get-caller-identity --query Arn --output text
+cluster_access_iam_principal_arns = ["arn:aws:iam::742890864997:root"]
+
 # RDS Configuration - PRODUCTION with Multi-AZ + Read Replicas
 db_instance_class              = "db.m5d.large"               # Larger instance for production
 db_postgres_version            = "16.6"                       # PostgreSQL 16.6 - available in all AWS regions
 db_allocated_storage           = 400                          # 400 GB initial storage (minimum for provisioned IOPS)
 db_backup_retention            = 30                           # 30 days backup retention
-db_multi_az                    = true                         # ✅ Multi-AZ ENABLED - Critical for HA
-db_create_read_replica         = true                         # ✅ Read replicas ENABLED
-db_read_replica_count          = 2                            # 2 read replicas for load distribution
+db_multi_az                    = false                        # ✅ Multi-AZ ENABLED - Critical for HA
+db_create_read_replica         = false                        # ✅ Read replicas ENABLED
+db_read_replica_count          = 0                            # 2 read replicas for load distribution
 db_read_replica_instance_class = "db.m5d.large"               # Read replicas can be smaller
 db_replica_availability_zones  = ["us-west-2b", "us-west-2c"] # Spread across AZs
 # db_iops                        = 3000                         # Provisioned IOPS for better performance
@@ -37,8 +40,8 @@ dr_region = "us-east-1" # DR region (different from us-west-2)
 
 # Note: DR RDS replica is now managed by DR workspace (dr-infrastructure/)
 # Primary workspace only manages cross-region backup replication
-db_enable_cross_region_backups = true # ✅ Replicate backups to DR region
-db_dr_kms_key_id               = ""   # Optional: KMS key for backup encryption
+db_enable_cross_region_backups = false # ✅ Replicate backups to DR region
+db_dr_kms_key_id               = ""    # Optional: KMS key for backup encryption
 
 # DR EKS Cluster Configuration (Production Only)
 dr_vpc_cidr                             = "10.1.0.0/16"
@@ -54,20 +57,23 @@ dr_node_instance_types                  = ["t3.medium", "t3.large"] # Cost-optim
 
 # ECR Repositories
 ecr_repository_names = [
-  "titanic-api"
-
+  "titanic-api",
+  "karpenter"
 ]
-ecr_enable_replication  = true          # ✅ Enable DR replication for prod
+ecr_enable_replication  = false         # ✅ Enable DR replication for prod
 ecr_replication_regions = ["us-east-1"] # Replicate to DR region
 
 # Feature Flags
-enable_argocd     = true
-enable_monitoring = true
-enable_logging    = true
+enable_argocd     = false
+enable_monitoring = false
+enable_logging    = false
+
+# EKS 1.33: AWS LB Controller addon not supported; keep false. Use Helm if needed.
+enable_aws_load_balancer_controller_addon = false
 
 # Tags
 # AWS Backup Configuration
-enable_eks_backup               = true
+enable_eks_backup               = false
 backup_schedule                 = "cron(0 6 * * ? *)" # Daily at 6:00 AM UTC
 backup_retention_days           = 35                  # Keep daily backups for 35 days
 backup_weekly_retention_days    = 90                  # Keep weekly backups for 90 days

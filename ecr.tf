@@ -38,8 +38,9 @@ module "ecr" {
   create_github_actions_policy = var.ecr_create_github_actions_policy
   github_actions_role_arn      = var.ecr_github_actions_role_arn
 
-  # IAM access - EKS pull
-  eks_node_role_arn = var.cluster_exists ? module.eks.node_role_arn : ""
+  # IAM access - EKS pull (create_* is plan-time; role ARN can be computed)
+  create_eks_ecr_pull_policy = var.cluster_exists
+  eks_node_role_arn          = var.cluster_exists ? module.eks.node_role_arn : ""
 
   # Additional principals for push/pull access
   push_principals = var.ecr_push_principals

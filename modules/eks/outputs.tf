@@ -38,10 +38,10 @@ output "node_security_group_id" {
   value       = aws_security_group.node.id
 }
 
-# Note: node_group_arn and node_group_status outputs removed
-# EKS Auto Mode manages node groups automatically - they are not Terraform-managed resources
-# Use AWS Console or CLI to view Auto Mode node pool status:
-#   aws eks describe-nodegroup --cluster-name <cluster> --nodegroup-name <nodegroup>
+output "node_group_arn" {
+  description = "ARN of the EKS managed node group"
+  value       = aws_eks_node_group.main.arn
+}
 
 output "cluster_oidc_issuer_url" {
   description = "The URL on the EKS cluster for the OpenID Connect identity provider"
@@ -64,11 +64,21 @@ output "node_role_arn" {
 }
 
 output "node_instance_profile_arn" {
-  description = "IAM instance profile ARN for EKS nodes (used by Auto Mode)"
+  description = "IAM instance profile ARN for EKS nodes (Karpenter uses this)"
   value       = aws_iam_instance_profile.node.arn
 }
 
 output "node_instance_profile_name" {
-  description = "IAM instance profile name for EKS nodes (used by Auto Mode)"
+  description = "IAM instance profile name for EKS nodes (Karpenter defaultInstanceProfile)"
   value       = aws_iam_instance_profile.node.name
+}
+
+output "karpenter_role_arn" {
+  description = "IAM role ARN for Karpenter controller (IRSA)"
+  value       = aws_iam_role.karpenter.arn
+}
+
+output "karpenter_role_name" {
+  description = "IAM role name for Karpenter controller (for policy attachment)"
+  value       = aws_iam_role.karpenter.name
 }
