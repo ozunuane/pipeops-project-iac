@@ -10,7 +10,7 @@ locals {
     qa     = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy"
   }
   _eks_exec_arn            = length(var.eks_exec_role_arn) > 0 ? var.eks_exec_role_arn : (fileexists("${path.module}/environments/${var.environment}/eks-exec-role-arn.txt") ? trimspace(file("${path.module}/environments/${var.environment}/eks-exec-role-arn.txt")) : "")
-  _eks_exec_entry          = length(local._eks_exec_arn) > 0 ? { "eks-exec" = { principal_arn = local._eks_exec_arn, level = "admin" } } : {}
+  _eks_exec_entry          = length(local._eks_exec_arn) > 0 ? { "eks-exec" = { principal_arn = local._eks_exec_arn, level = "admin", namespaces = null } } : {}
   _entries_merged          = merge(var.cluster_access_entries, local._eks_exec_entry)
   _get_token_args          = length(local._eks_exec_arn) > 0 ? concat(["eks", "get-token", "--cluster-name", module.eks.cluster_name], ["--role-arn", local._eks_exec_arn]) : ["eks", "get-token", "--cluster-name", module.eks.cluster_name]
   cluster_scoped_entries   = { for k, v in local._entries_merged : k => v if length(coalesce(v.namespaces, [])) == 0 }
