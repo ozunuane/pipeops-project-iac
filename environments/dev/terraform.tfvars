@@ -17,7 +17,7 @@ database_subnet_cidrs = ["10.2.201.0/24", "10.2.202.0/24", "10.2.203.0/24"]
 kubernetes_version = "1.33"
 cluster_exists     = false # Set to true after EKS cluster is created
 create_eks         = true  # Set false to skip EKS and all EKS-dependent resources
-create_rds         = false  # Set false to skip RDS and DB-related resources
+create_rds         = false # Set false to skip RDS and DB-related resources
 
 # RDS Configuration - DEVELOPMENT (Cost-optimized, Single-AZ)
 db_instance_class              = "db.t4g.medium" # Burstable instance for cost savings

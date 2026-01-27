@@ -73,6 +73,8 @@ PROJECT_NAME=myapp ./scripts/setup-prerequisites.sh <environment> <region>
 - KMS Key: `alias/${PROJECT_NAME}-${ENVIRONMENT}-terraform`
 - **GitHub OIDC Provider:** `token.actions.githubusercontent.com` (once per AWS account)
 - **IAM Role for GitHub Actions:** `${PROJECT_NAME}-${ENVIRONMENT}-github-actions`
+- **EKS Terraform exec role:** `${PROJECT_NAME}-${ENVIRONMENT}-eks-terraform-exec` (CI assumes OIDC → this role for `aws eks get-token`)
+- **eks-exec-role-arn.txt:** `environments/${ENVIRONMENT}/eks-exec-role-arn.txt` (Terraform uses this for EKS provider auth)
 - Backend Config: `environments/${ENVIRONMENT}/backend.conf`
 
 **Environment Variables:**
@@ -94,6 +96,8 @@ PROJECT_NAME=acme-platform ./scripts/setup-prerequisites.sh dev us-west-2
 # Skip OIDC if already configured
 SKIP_OIDC=true PROJECT_NAME=acme-platform ./scripts/setup-prerequisites.sh dev us-west-2
 ```
+
+**EKS exec role & bootstrap:** The script creates an EKS Terraform exec role and writes `environments/<ENV>/eks-exec-role-arn.txt`. Terraform uses this for `aws eks get-token --role-arn` when managing Helm/Kubernetes resources. For **existing** EKS clusters, run `make bootstrap-eks-access ENV=<env>` once (with an identity that already has EKS admin, e.g. root) to register the eks-exec role before running full plan/apply. See [GETTING_STARTED.md](../docs/GETTING_STARTED.md) and the [Makefile](../Makefile) (`plan-no-refresh`, `apply-plan`, `bootstrap-eks-access`).
 
 ### 2. `setup-dr-prerequisites.sh`
 
@@ -198,15 +202,18 @@ aws dynamodb list-tables | grep acme-platform
 
 #### Step 4: Deploy Infrastructure
 
+Variables are supplied only via `environments/<ENV>/terraform.tfvars` (declarative; no `-var` overrides). Use `make plan ENV=<env>` / `make apply ENV=<env>` or the deploy scripts.
+
 ```bash
 # Deploy to dev
-PROJECT_NAME=acme-platform ./scripts/deploy.sh dev apply
+make init ENV=dev && make plan ENV=dev && make apply ENV=dev
+# Or: PROJECT_NAME=acme-platform ./scripts/deploy.sh dev apply
 
 # Deploy to staging
-PROJECT_NAME=acme-platform ./scripts/deploy.sh staging apply
+make init ENV=staging && make plan ENV=staging && make apply ENV=staging
 
 # Deploy to prod
-PROJECT_NAME=acme-platform ./scripts/deploy.sh prod apply
+make init ENV=prod && make plan ENV=prod && make apply ENV=prod
 
 # Deploy DR
 cd dr-infrastructure

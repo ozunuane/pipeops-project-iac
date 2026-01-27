@@ -17,8 +17,8 @@ database_subnet_cidrs = ["10.0.201.0/24", "10.0.202.0/24", "10.0.203.0/24"]
 # EKS Configuration
 kubernetes_version = "1.33"
 cluster_exists     = true # EKS cluster is running - enables Helm resources and backups
-create_eks         = true  # Set false to skip EKS and all EKS-dependent resources
-create_rds         = true  # Set false to skip RDS and DB-related resources
+create_eks         = true # Set false to skip EKS and all EKS-dependent resources
+create_rds         = true # Set false to skip RDS and DB-related resources
 
 # EKS access by level: admin (full) | devops | dev (edit) | qa (view-only). Optional namespaces = scope dev/qa.
 # Level -> policy: admin=ClusterAdmin, devops/dev=Edit, qa=View. Add namespaces for dev/qa to restrict scope.

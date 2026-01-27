@@ -137,15 +137,20 @@ pipeops-project-iac/
 
 ### Common Commands
 
+Variables are **declarative only** via `environments/<ENV>/terraform.tfvars` (no `-var` overrides). Use the [Makefile](../Makefile) with `ENV=dev|staging|prod`.
+
 ```bash
 # Initialize Terraform
-terraform init -backend-config=environments/prod/backend.conf
+make init ENV=prod
+# Or: terraform init -backend-config=environments/prod/backend.conf -reconfigure
 
 # Plan changes
-terraform plan -var-file=environments/prod/terraform.tfvars
+make plan ENV=prod
+# Or: terraform plan -var-file=environments/prod/terraform.tfvars -no-color -input=false
 
 # Apply changes
-terraform apply -var-file=environments/prod/terraform.tfvars
+make apply ENV=prod
+# Or: terraform apply -var-file=environments/prod/terraform.tfvars -input=false
 
 # Access EKS cluster
 aws eks update-kubeconfig --region us-west-2 --name pipeops-prod-eks
@@ -154,6 +159,14 @@ aws eks update-kubeconfig --region us-west-2 --name pipeops-prod-eks
 kubectl -n argocd get secret argocd-initial-admin-secret \
   -o jsonpath="{.data.password}" | base64 -d
 ```
+
+### Key tfvars
+
+| Variable | Description |
+|----------|-------------|
+| `create_eks` | Set `false` to skip EKS and EKS-dependent resources |
+| `create_rds` | Set `false` to skip RDS and DB-related resources |
+| `cluster_exists` | Set `true` after first EKS deploy (enables Helm, Karpenter, etc.) |
 
 ### Environment URLs
 
