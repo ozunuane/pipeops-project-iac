@@ -21,7 +21,7 @@ This setup includes:
 ### Network Architecture
 - **VPC**: Multi-AZ deployment across 3 availability zones
 - **Subnets**: Public, private, and database subnet tiers
-- **NAT Gateways**: High availability with one per AZ
+- **NAT Gateway**: Single regional NAT gateway (cost-optimized); all private subnets share egress
 - **VPC Endpoints**: Cost optimization for AWS services
 
 ### Security
@@ -99,21 +99,25 @@ Automated CI/CD pipeline for all environments. See [GitHub Actions Guide](./GITH
 
 ### Step 2: Configure Variables
 
-```bash
-# Copy and customize the example variables
-cp terraform.tfvars.example terraform.tfvars
+Edit `environments/<ENV>/terraform.tfvars` for each environment. Variables are **declarative only** (no `-var` overrides). Set `create_eks` / `create_rds` to `true` or `false` to control EKS and RDS creation.
 
-# Or use environment-specific variables
-cp environments/prod/terraform.tfvars terraform.tfvars
+```bash
+# Copy example and customize
+cp terraform.tfvars.example environments/prod/terraform.tfvars
+# Or edit existing: environments/prod/terraform.tfvars
 ```
 
 ### Step 3: Deploy Infrastructure
 
 ```bash
-# Plan the deployment
-./scripts/deploy.sh prod plan
+# Plan (uses -var-file=environments/<ENV>/terraform.tfvars only)
+make plan ENV=prod
 
-# Apply the deployment
+# Apply
+make apply ENV=prod
+
+# Or use deploy script
+./scripts/deploy.sh prod plan
 ./scripts/deploy.sh prod apply
 ```
 
@@ -170,13 +174,18 @@ Each environment has its own configuration:
 
 ### Key Configuration Options
 
+Variables are passed **only** via environment-specific `terraform.tfvars` (declarative). Do not use `-var` overrides. Use `make plan ENV=prod` / `make apply ENV=prod` (see [Makefile](./Makefile)).
+
 ```hcl
 # Network Configuration
 vpc_cidr              = "10.0.0.0/16"
 availability_zones    = ["us-west-2a", "us-west-2b", "us-west-2c"]
 
-# EKS Configuration
-kubernetes_version    = "1.28"
+# EKS / RDS – optionally skip creation per environment
+create_eks            = true   # Set false to skip EKS and EKS-dependent resources
+create_rds            = true   # Set false to skip RDS and DB-related resources
+cluster_exists        = false  # Set true after first EKS deploy (enables Helm, etc.)
+kubernetes_version    = "1.33"
 node_instance_types   = ["m5.large", "m5.xlarge"]
 
 # Database Configuration
@@ -285,18 +294,20 @@ spec:
 
 ### Deployment Commands
 
+Use the [Makefile](./Makefile) with `ENV=dev|staging|prod`. Variables come only from `environments/<ENV>/terraform.tfvars`.
+
 ```bash
 # Deploy to production
-./scripts/deploy.sh prod apply
+make plan ENV=prod && make apply ENV=prod
 
 # Deploy to staging
-./scripts/deploy.sh staging apply
+make plan ENV=staging && make apply ENV=staging
 
 # Plan changes
-./scripts/deploy.sh prod plan
+make plan ENV=prod
 
 # Destroy environment (careful!)
-./scripts/deploy.sh dev destroy
+terraform destroy -var-file=environments/dev/terraform.tfvars
 ```
 
 ### Maintenance Tasks

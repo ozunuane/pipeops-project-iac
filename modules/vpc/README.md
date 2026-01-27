@@ -9,11 +9,11 @@ Production-grade VPC with multi-AZ deployment for EKS and RDS workloads.
 │                              VPC (10.0.0.0/16)                              │
 │                                                                             │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                        PUBLIC SUBNETS (NAT, ALB)                     │   │
+│  │                        PUBLIC SUBNETS (ALB, NAT)                     │   │
 │  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐      │   │
 │  │  │   10.0.101.0/24 │  │   10.0.102.0/24 │  │   10.0.103.0/24 │      │   │
 │  │  │     us-west-2a  │  │     us-west-2b  │  │     us-west-2c  │      │   │
-│  │  │   NAT Gateway   │  │   NAT Gateway   │  │   NAT Gateway   │      │   │
+│  │  │ NAT Gateway (1) │  │                 │  │                 │      │   │
 │  │  └─────────────────┘  └─────────────────┘  └─────────────────┘      │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                             │
@@ -44,7 +44,7 @@ Production-grade VPC with multi-AZ deployment for EKS and RDS workloads.
 |---------|-------------|
 | **Multi-AZ** | Subnets across 3 availability zones |
 | **3-Tier Network** | Public, private, and database subnets |
-| **NAT Gateways** | One per AZ for high availability |
+| **NAT Gateway** | Single regional NAT gateway; all private subnets share egress (cost-optimized) |
 | **EKS Tags** | Automatic subnet tagging for EKS |
 | **Flow Logs** | VPC Flow Logs to CloudWatch |
 
@@ -64,7 +64,7 @@ module "vpc" {
   database_subnet_cidrs = ["10.0.201.0/24", "10.0.202.0/24", "10.0.203.0/24"]
   
   enable_nat_gateway = true
-  single_nat_gateway = false  # One per AZ for HA
+  # single_nat_gateway: current implementation uses a single regional NAT (cost-optimized)
   
   tags = {
     Environment = "prod"
@@ -85,7 +85,7 @@ module "vpc" {
 | `private_subnet_cidrs` | Private subnet CIDRs | `list(string)` | - | yes |
 | `database_subnet_cidrs` | Database subnet CIDRs | `list(string)` | - | yes |
 | `enable_nat_gateway` | Enable NAT Gateway | `bool` | `true` | no |
-| `single_nat_gateway` | Use single NAT Gateway | `bool` | `false` | no |
+| `single_nat_gateway` | Use single NAT Gateway | `bool` | — | no (implementation uses single regional NAT) |
 | `enable_dns_hostnames` | Enable DNS hostnames | `bool` | `true` | no |
 | `enable_dns_support` | Enable DNS support | `bool` | `true` | no |
 
@@ -99,7 +99,7 @@ module "vpc" {
 | `private_subnet_ids` | List of private subnet IDs |
 | `database_subnet_ids` | List of database subnet IDs |
 | `database_subnet_group_name` | Database subnet group name |
-| `nat_gateway_ids` | List of NAT Gateway IDs |
+| `nat_gateway_ids` | NAT Gateway ID(s) (single regional NAT in current implementation) |
 
 ## Subnet Tagging
 
@@ -119,14 +119,14 @@ kubernetes.io/cluster/{cluster-name} = shared
 
 | Component | Cost Impact |
 |-----------|-------------|
-| **NAT Gateway** | ~$32/month each + data processing |
+| **NAT Gateway** | ~$32/month (single regional) + data processing |
 | **VPC Endpoints** | ~$7.30/month each |
 | **Data Transfer** | Inter-AZ: $0.01/GB |
 
 **Cost Optimization Tips:**
-- Use `single_nat_gateway = true` for non-production
-- Add VPC Endpoints for frequently used AWS services
-- Monitor data transfer between AZs
+- The module uses a single regional NAT gateway by default.
+- Add VPC Endpoints for frequently used AWS services to reduce NAT data transfer.
+- Monitor data transfer between AZs.
 
 ## Security
 

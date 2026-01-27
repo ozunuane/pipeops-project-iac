@@ -449,7 +449,7 @@ Worker Nodes (Auto-scaling)
 └────────────────────────────────────────────────────────────────────────┘
 
 DEVELOPMENT ENVIRONMENT (us-west-2)
-  ├─ VPC (NAT Gateway 1x)                    $32
+  ├─ VPC (NAT Gateway 1x, single regional)   $32
   ├─ EKS Cluster                             $72
   ├─ EC2 Nodes (2x t3.medium)               $120
   ├─ RDS Single-AZ (db.t3.medium)           $130
@@ -460,7 +460,7 @@ DEVELOPMENT ENVIRONMENT (us-west-2)
   TOTAL:                                    ~$500/month
 
 STAGING ENVIRONMENT (us-west-2)
-  ├─ VPC (NAT Gateway 2x)                    $64
+  ├─ VPC (NAT Gateway 1x, single regional)   $32
   ├─ EKS Cluster                             $72
   ├─ EC2 Nodes (2-4x t3.large)              $240
   ├─ RDS Multi-AZ (db.r6g.large)            $310
@@ -471,7 +471,7 @@ STAGING ENVIRONMENT (us-west-2)
   TOTAL:                                    ~$800/month
 
 PRODUCTION ENVIRONMENT (us-west-2)
-  ├─ VPC (NAT Gateway 3x)                    $96
+  ├─ VPC (NAT Gateway 1x, single regional)   $32
   ├─ EKS Cluster                             $72
   ├─ EC2 Nodes (3-10x m5.large)             $960
   ├─ RDS Multi-AZ (db.r6g.xlarge)           $620
@@ -483,7 +483,7 @@ PRODUCTION ENVIRONMENT (us-west-2)
   TOTAL:                                   ~$2,500/month
 
 DR ENVIRONMENT (us-east-1)
-  ├─ DR VPC (NAT Gateway 2x)                 $64
+  ├─ DR VPC (NAT Gateway 1x, single)         $32
   ├─ DR EKS Cluster                          $72
   ├─ DR EC2 Nodes (2x t3.medium standby)    $120
   ├─ DR RDS Replica Multi-AZ (db.r6g.xlarge)$1,240
