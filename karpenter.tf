@@ -246,13 +246,13 @@ resource "aws_iam_role_policy" "karpenter_controller" {
 }
 
 
-# EKS-optimized AMI via official SSM parameter (avoids "no results" from aws_ami name filter).
+# EKS-optimized AMI via SSM. AL2 deprecated Nov 2025; use AL2023 for 1.33.
 data "aws_ssm_parameter" "eks_ami" {
-  name = "/aws/service/eks/optimized-ami/${var.kubernetes_version}/amazon-linux-2/recommended/image_id"
+  name = "/aws/service/eks/optimized-ami/${var.kubernetes_version}/amazon-linux-2023/x86_64/standard/recommended/image_id"
 }
 
 # EC2NodeClass - default (subnets/SG via karpenter.sh/discovery)
-# Karpenter 1.5 uses v1 API. AMI from SSM; Helm release in helm_addons.tf.
+# Karpenter 1.5 uses v1 API. AMI from SSM (AL2023); Helm release in helm_addons.tf.
 resource "kubectl_manifest" "karpenter_nodeclass" {
   count = var.create_eks && var.cluster_exists ? 1 : 0
 
@@ -261,7 +261,7 @@ resource "kubectl_manifest" "karpenter_nodeclass" {
     kind       = "EC2NodeClass"
     metadata   = { name = "default" }
     spec = {
-      amiFamily = "AL2"
+      amiFamily = "AL2023"
       amiSelectorTerms = [{
         id = data.aws_ssm_parameter.eks_ami.value
       }]
