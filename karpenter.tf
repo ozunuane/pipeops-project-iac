@@ -197,10 +197,13 @@ resource "aws_iam_role_policy" "karpenter_controller" {
         }
       },
       {
-        Sid      = "AllowSSMReadActions"
-        Effect   = "Allow"
-        Action   = "ssm:GetParameter"
-        Resource = "arn:aws:ssm:${var.region}::parameter/aws/service/*"
+        Sid    = "AllowSSMReadActions"
+        Effect = "Allow"
+        Action = "ssm:GetParameter"
+        Resource = [
+          "arn:aws:ssm:${var.region}::parameter/aws/service/*",
+          "arn:aws:ssm:*:*:parameter/aws/service/*"
+        ]
       },
       {
         Sid      = "AllowPricingReadActions"
@@ -242,43 +245,7 @@ resource "aws_iam_role_policy" "karpenter_controller" {
   })
 }
 
-# Helm release - Karpenter
-resource "helm_release" "karpenter" {
-  count = var.create_eks && var.cluster_exists ? 1 : 0
-
-  name             = "karpenter"
-  repository       = "oci://public.ecr.aws/karpenter"
-  chart            = "karpenter"
-  version          = "1.5.0"
-  namespace        = "karpenter"
-  create_namespace = true
-  timeout          = 900
-  wait             = false
-  wait_for_jobs    = false
-
-  set {
-    name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-    value = module.eks[0].karpenter_role_arn
-  }
-  set {
-    name  = "settings.clusterName"
-    value = local.cluster_name
-  }
-  set {
-    name  = "settings.defaultInstanceProfile"
-    value = module.eks[0].node_instance_profile_name
-  }
-  set {
-    name  = "settings.interruptionQueue"
-    value = aws_sqs_queue.karpenter[0].name
-  }
-
-  depends_on = [
-    module.eks,
-    aws_iam_role_policy.karpenter_controller[0],
-    aws_eks_access_policy_association.cluster_scoped,
-  ]
-}
+# Helm release lives in helm_addons.tf.
 
 # EC2NodeClass - default (subnets/SG via karpenter.sh/discovery)
 # Karpenter 1.5 uses v1 API only. Ref: https://docs.aws.amazon.com/eks/latest/best-practices/karpenter.html

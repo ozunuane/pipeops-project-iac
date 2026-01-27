@@ -128,6 +128,12 @@ variable "enable_monitoring" {
   default     = true
 }
 
+variable "enable_metrics_server" {
+  description = "Install metrics-server via Helm. Required for HPA (CPU/memory), Karpenter right-sizing, and kubectl top."
+  type        = bool
+  default     = true
+}
+
 variable "enable_logging" {
   description = "Enable logging stack (AWS CloudWatch)"
   type        = bool

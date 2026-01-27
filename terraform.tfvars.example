@@ -65,9 +65,10 @@ ecr_enable_replication             = true   # Enable cross-region replication (p
 ecr_replication_regions            = ["us-east-1"]  # DR region
 
 # Feature Flags
-enable_argocd     = true
-enable_monitoring = true
-enable_logging    = true
+enable_argocd        = true
+enable_monitoring    = true
+enable_metrics_server = true  # Helm-based metrics-server for HPA, kubectl top, Karpenter
+enable_logging       = true
 
 # Tags
 tags = {

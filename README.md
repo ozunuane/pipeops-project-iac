@@ -13,6 +13,7 @@ This setup includes:
 - **AWS Load Balancer Controller** - Application Load Balancer integration
 - **Prometheus & Grafana** - Monitoring and observability
 - **External Secrets Operator** - AWS Secrets Manager integration
+- **Metrics Server** - metrics.k8s.io for HPA, `kubectl top`, Karpenter (Helm, optional via `enable_metrics_server`)
 - **Container Insights** - CloudWatch monitoring for containers
 - **CloudWatch Alarms** - Proactive database monitoring
 
@@ -139,6 +140,8 @@ kubectl port-forward svc/grafana -n monitoring 3000:80
 ```
 
 ## 📁 Project Structure
+
+Root Terraform: `main.tf`, `helm_addons.tf` (Metrics Server, External Secrets, ArgoCD, Karpenter), `karpenter.tf`, `argocd.tf`, `eks_access.tf`, etc.
 
 ```
 .
