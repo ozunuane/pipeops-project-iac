@@ -12,13 +12,15 @@ VAR_FILE      := environments/$(ENV)/terraform.tfvars
 # EKS node role name (project-environment-eks-eks-node-role). Override if different.
 NODE_ROLE_NAME ?= pipeops-prod-eks-eks-node-role
 
-.PHONY: init plan apply validate fmt import-eks-node import-eks-access bootstrap-eks-access
+.PHONY: init plan plan-no-refresh apply-plan apply validate fmt import-eks-node import-eks-access bootstrap-eks-access
 .DEFAULT_GOAL := help
 
 help:
 	@echo "Terraform targets (use ENV=dev|staging|prod):"
 	@echo "  make init ENV=prod     - init with -backend-config + -reconfigure"
 	@echo "  make plan ENV=prod     - plan with -var-file"
+	@echo "  make plan-no-refresh ENV=prod - plan with -refresh=false, -out=tfplan-ENV (when eks-exec not in EKS yet)"
+	@echo "  make apply-plan ENV=prod      - apply saved plan (use after plan-no-refresh; creates eks-exec then Helm)"
 	@echo "  make apply ENV=prod    - apply with -var-file"
 	@echo "  make validate          - terraform validate"
 	@echo "  make fmt               - terraform fmt -recursive"
@@ -48,6 +50,15 @@ init: check-env
 
 plan: check-env
 	terraform plan -var-file=$(VAR_FILE) -no-color -input=false
+
+plan-no-refresh: check-env
+	@echo "Planning without refresh (skips cluster connection). Use when eks-exec access entry does not exist yet."
+	@echo "Then run: make apply-plan ENV=$(ENV)   (applies tfplan-$(ENV), creating eks-exec entry before Helm runs)"
+	terraform plan -refresh=false -var-file=$(VAR_FILE) -out=tfplan-$(ENV) -no-color -input=false
+
+apply-plan: check-env
+	@test -f tfplan-$(ENV) || (echo "No tfplan-$(ENV). Run: make plan-no-refresh ENV=$(ENV)"; exit 1)
+	terraform apply -input=false tfplan-$(ENV)
 
 apply: check-env
 	terraform apply -var-file=$(VAR_FILE) -input=false
