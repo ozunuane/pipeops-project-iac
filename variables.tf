@@ -122,6 +122,18 @@ variable "enable_logging" {
   default     = true
 }
 
+variable "enable_aws_load_balancer_controller_addon" {
+  description = "Install AWS Load Balancer Controller as EKS addon. Set to false for Kubernetes 1.33 (addon not supported); use Helm instead if needed."
+  type        = bool
+  default     = false
+}
+
+variable "cluster_access_iam_principal_arns" {
+  description = "IAM user/role ARNs to grant EKS cluster admin access (kubectl, Helm). Use 'aws sts get-caller-identity' to get your ARN. Prefer IAM users/roles over root."
+  type        = list(string)
+  default     = []
+}
+
 variable "db_instance_class" {
   description = "RDS instance class"
   type        = string
