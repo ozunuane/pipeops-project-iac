@@ -162,6 +162,18 @@ variable "eks_exec_role_arn" {
   default     = ""
 }
 
+variable "use_eks_exec_role" {
+  description = "Use eks-exec role for aws eks get-token (--role-arn). Set false for local dev when your AWS identity has EKS access directly; avoids 'aws failed 254' if you cannot assume the exec role."
+  type        = bool
+  default     = true
+}
+
+variable "aws_profile" {
+  description = "AWS profile name for exec (aws eks get-token). Set in tfvars when using a profile; ensures Helm/K8s providers use it. Empty = default credential chain."
+  type        = string
+  default     = ""
+}
+
 variable "db_instance_class" {
   description = "RDS instance class"
   type        = string

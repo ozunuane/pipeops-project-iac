@@ -21,3 +21,6 @@ spec:
             requests:
               cpu: "1"
               memory: "1.5Gi"
+
+
+

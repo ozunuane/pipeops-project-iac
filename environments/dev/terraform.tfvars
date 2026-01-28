@@ -18,6 +18,8 @@ kubernetes_version = "1.33"
 cluster_exists     = true  # Set to true after EKS cluster is created
 create_eks         = true  # Set false to skip EKS and all EKS-dependent resources
 create_rds         = false # Set false to skip RDS and DB-related resources
+use_eks_exec_role  = false # Local dev: use your AWS identity for EKS (avoids "aws failed 254" when you can't assume exec role)
+# aws_profile        = "myprofile" # Uncomment if using a named profile for Terraform/Helm
 
 # RDS Configuration - DEVELOPMENT (Cost-optimized, Single-AZ)
 db_instance_class              = "db.t4g.medium" # Burstable instance for cost savings
