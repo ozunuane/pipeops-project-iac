@@ -176,9 +176,9 @@ resource "aws_iam_role_policy" "karpenter_controller" {
         }
       },
       {
-        Sid    = "AllowScopedResourceTagging"
-        Effect = "Allow"
-        Action = "ec2:CreateTags"
+        Sid      = "AllowScopedResourceTagging"
+        Effect   = "Allow"
+        Action   = "ec2:CreateTags"
         Resource = "arn:aws:ec2:${var.region}:*:instance/*"
         Condition = {
           StringEquals = {
@@ -259,9 +259,9 @@ resource "aws_iam_role_policy" "karpenter_controller" {
         Resource = aws_sqs_queue.karpenter[0].arn
       },
       {
-        Sid    = "AllowPassingInstanceRole"
-        Effect = "Allow"
-        Action = "iam:PassRole"
+        Sid      = "AllowPassingInstanceRole"
+        Effect   = "Allow"
+        Action   = "iam:PassRole"
         Resource = module.eks[0].node_role_arn
         Condition = {
           StringEquals = {
@@ -284,9 +284,9 @@ resource "aws_iam_role_policy" "karpenter_controller" {
         Resource = module.eks[0].cluster_arn
       },
       {
-        Sid    = "AllowCreateServiceLinkedRole"
-        Effect = "Allow"
-        Action = "iam:CreateServiceLinkedRole"
+        Sid      = "AllowCreateServiceLinkedRole"
+        Effect   = "Allow"
+        Action   = "iam:CreateServiceLinkedRole"
         Resource = "arn:aws:iam::*:role/aws-service-role/spot.amazonaws.com/*"
         Condition = {
           StringEquals = {
@@ -354,9 +354,9 @@ resource "kubectl_manifest" "karpenter_nodepool" {
             { key = "karpenter.sh/capacity-type", operator = "In", values = ["spot", "on-demand"] },
             { key = "kubernetes.io/arch", operator = "In", values = ["amd64"] },
             { key = "kubernetes.io/os", operator = "In", values = ["linux"] },
-            { 
-              key = "node.kubernetes.io/instance-type", 
-              operator = "In", 
+            {
+              key      = "node.kubernetes.io/instance-type",
+              operator = "In",
               values = [
                 "m5.large", "m5.xlarge", "m5.2xlarge",
                 "m6i.large", "m6i.xlarge", "m6i.2xlarge",
@@ -394,11 +394,11 @@ resource "kubectl_manifest" "karpenter_nodepool_default" {
     metadata   = { name = "default" }
     spec = {
       template = {
-        metadata = { 
-          labels = { 
+        metadata = {
+          labels = {
             "workload-type" = "general"
             "intent"        = "apps"
-          } 
+          }
         }
         spec = {
           nodeClassRef = {
@@ -411,9 +411,9 @@ resource "kubectl_manifest" "karpenter_nodepool_default" {
             { key = "karpenter.sh/capacity-type", operator = "In", values = ["spot", "on-demand"] },
             { key = "kubernetes.io/arch", operator = "In", values = ["amd64"] },
             { key = "kubernetes.io/os", operator = "In", values = ["linux"] },
-            { 
-              key = "node.kubernetes.io/instance-type", 
-              operator = "In", 
+            {
+              key      = "node.kubernetes.io/instance-type",
+              operator = "In",
               values = [
                 "m5.large", "m5.xlarge", "m5.2xlarge",
                 "m6i.large", "m6i.xlarge", "m6i.2xlarge",
@@ -430,7 +430,7 @@ resource "kubectl_manifest" "karpenter_nodepool_default" {
         consolidateAfter    = "30s"
         budgets = [
           {
-            nodes = "10%"
+            nodes   = "10%"
             reasons = ["Underutilized", "Empty"]
           }
         ]
@@ -452,11 +452,11 @@ resource "kubectl_manifest" "karpenter_nodepool_critical" {
     spec = {
       weight = 100 # Higher weight = preferred for matching pods
       template = {
-        metadata = { 
-          labels = { 
+        metadata = {
+          labels = {
             "workload-type" = "critical"
             "intent"        = "critical-apps"
-          } 
+          }
         }
         spec = {
           nodeClassRef = {
@@ -469,9 +469,9 @@ resource "kubectl_manifest" "karpenter_nodepool_critical" {
             { key = "karpenter.sh/capacity-type", operator = "In", values = ["on-demand"] },
             { key = "kubernetes.io/arch", operator = "In", values = ["amd64"] },
             { key = "kubernetes.io/os", operator = "In", values = ["linux"] },
-            { 
-              key = "node.kubernetes.io/instance-type", 
-              operator = "In", 
+            {
+              key      = "node.kubernetes.io/instance-type",
+              operator = "In",
               values = [
                 "m6i.xlarge", "m6i.2xlarge",
                 "m5.xlarge", "m5.2xlarge",
@@ -480,7 +480,7 @@ resource "kubectl_manifest" "karpenter_nodepool_critical" {
             }
           ]
           taints = [
-            { 
+            {
               key    = "workload-type"
               value  = "critical"
               effect = "NoSchedule"
@@ -490,11 +490,11 @@ resource "kubectl_manifest" "karpenter_nodepool_critical" {
       }
       limits = { cpu = "100", memory = "200Gi" }
       disruption = {
-        consolidationPolicy = "WhenEmpty"  # Only consolidate when completely empty
-        consolidateAfter    = "30m"        # Wait 30 minutes before consolidating
+        consolidationPolicy = "WhenEmpty" # Only consolidate when completely empty
+        consolidateAfter    = "30m"       # Wait 30 minutes before consolidating
         budgets = [
           {
-            nodes = "0"  # Don't disrupt any nodes for underutilization
+            nodes   = "0" # Don't disrupt any nodes for underutilization
             reasons = ["Underutilized"]
           }
         ]

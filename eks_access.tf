@@ -19,7 +19,7 @@ locals {
   _get_token_args          = length(local._eks_exec_arn) > 0 ? concat(["eks", "get-token", "--cluster-name", local._eks_cluster_name], ["--role-arn", local._eks_exec_arn]) : ["eks", "get-token", "--cluster-name", local._eks_cluster_name]
   cluster_scoped_entries   = { for k, v in local._entries_for_eks : k => v if length(coalesce(v.namespaces, [])) == 0 }
   namespace_scoped_entries = { for k, v in local._entries_for_eks : k => v if length(coalesce(v.namespaces, [])) > 0 }
-  _exec_env               = merge({ AWS_REGION = var.region }, length(var.aws_profile) > 0 ? { AWS_PROFILE = var.aws_profile } : {})
+  _exec_env                = merge({ AWS_REGION = var.region }, length(var.aws_profile) > 0 ? { AWS_PROFILE = var.aws_profile } : {})
 }
 
 resource "aws_eks_access_entry" "cluster_access" {
