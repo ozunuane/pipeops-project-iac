@@ -14,10 +14,12 @@ public_subnet_cidrs   = ["10.2.101.0/24", "10.2.102.0/24", "10.2.103.0/24"]
 database_subnet_cidrs = ["10.2.201.0/24", "10.2.202.0/24", "10.2.203.0/24"]
 
 # EKS Configuration
-kubernetes_version = "1.33"
-cluster_exists     = true  # Set to true after EKS cluster is created
-create_eks         = true  # Set false to skip EKS and all EKS-dependent resources
-create_rds         = false # Set false to skip RDS and DB-related resources
+kubernetes_version  = "1.33"
+cluster_exists      = true  # Set to true after EKS cluster is created
+create_eks          = true  # Set false to skip EKS and all EKS-dependent resources
+create_rds          = false # Set false to skip RDS and DB-related resources
+use_eks_exec_role   = false # Local dev: use your AWS identity for EKS (avoids "aws failed 254" when you can't assume exec role)
+# aws_profile        = "myprofile" # Uncomment if using a named profile for Terraform/Helm
 
 # RDS Configuration - DEVELOPMENT (Cost-optimized, Single-AZ)
 db_instance_class              = "db.t4g.medium" # Burstable instance for cost savings

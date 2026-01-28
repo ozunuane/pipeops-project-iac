@@ -1,0 +1,128 @@
+#SET PRIORITY CLASS TO CRITICAL
+
+# 1. Pod Priority Classes (Most Important)
+# This is the primary way to tell Karpenter what's critical:
+# Create priority classes
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: critical
+value: 1000000
+globalDefault: false
+description: "Critical workloads that should never be disrupted"
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: high
+value: 10000
+globalDefault: false
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: normal
+value: 0
+globalDefault: true
+
+# Then use them in your deployments:
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: critical-app
+spec:
+  template:
+    spec:
+      priorityClassName: critical
+      tolerations:
+      - key: "workload-type"
+        operator: "Equal"
+        value: "critical"
+        effect: "NoSchedule"
+      nodeSelector:
+        workload-type: critical
+
+
+
+
+
+5. Pod Annotations (Do Not Disrupt)
+Tell Karpenter to never disrupt specific pods:
+yamlapiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: critical-stateful-app
+spec:
+  template:
+    metadata:
+      annotations:
+        karpenter.sh/do-not-disrupt: "true"  # Karpenter won't move this pod
+    spec:
+      containers:
+      - name: app
+        image: myapp
+
+
+
+#SET PDB TO 2
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: critical-app-pdb
+spec:
+  minAvailable: 2  # or use maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: critical-app
+
+
+# Karpenter respects PDBs during:
+
+# Node consolidation (when scaling down)
+# Node expiration
+# Drift detection
+
+
+
+
+
+
+# 1. Test default NodePool (general workloads)
+kubectl create deployment test-general --image=nginx --replicas=2
+kubectl set resources deployment test-general --requests=cpu=500m,memory=512Mi
+
+# 2. Test critical NodePool (with toleration and node selector)
+cat <<EOF | kubectl apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-critical
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: test-critical
+  template:
+    metadata:
+      labels:
+        app: test-critical
+    spec:
+      tolerations:
+      - key: "workload-type"
+        operator: "Equal"
+        value: "critical"
+        effect: "NoSchedule"
+      nodeSelector:
+        workload-type: critical
+      containers:
+      - name: nginx
+        image: nginx
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+EOF
+
+# Watch Karpenter provision nodes
+kubectl logs -n karpenter -l app.kubernetes.io/name=karpenter --tail=50 -f

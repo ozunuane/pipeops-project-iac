@@ -149,9 +149,7 @@ provider "kubernetes" {
     api_version = "client.authentication.k8s.io/v1beta1"
     command     = "aws"
     args        = local._get_token_args
-    env = {
-      AWS_REGION = var.region
-    }
+    env        = local._exec_env
   }
 }
 
@@ -163,9 +161,7 @@ provider "helm" {
       api_version = "client.authentication.k8s.io/v1beta1"
       command     = "aws"
       args        = local._get_token_args
-      env = {
-        AWS_REGION = var.region
-      }
+      env        = local._exec_env
     }
   }
 }
@@ -178,9 +174,7 @@ provider "kubectl" {
     api_version = "client.authentication.k8s.io/v1beta1"
     command     = "aws"
     args        = local._get_token_args
-    env = {
-      AWS_REGION = var.region
-    }
+    env        = local._exec_env
   }
 }
 

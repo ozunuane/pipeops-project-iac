@@ -54,7 +54,19 @@ resource "aws_cloudwatch_event_target" "karpenter_interruption" {
   arn   = aws_sqs_queue.karpenter[0].arn
 }
 
-# IAM policy for Karpenter controller (scoped to cluster; uses existing instance profile)
+# Create EC2 Spot Service-Linked Role (only needed once per account)
+resource "aws_iam_service_linked_role" "spot" {
+  count            = var.create_eks && var.cluster_exists ? 1 : 0
+  aws_service_name = "spot.amazonaws.com"
+  description      = "Service-linked role for EC2 Spot instances"
+
+  lifecycle {
+    ignore_changes = all
+  }
+}
+
+# IAM policy for Karpenter controller (uses existing EKS node instance profile).
+# Includes official AWS Karpenter CF policy baseline (Resource "*", no conditions) plus SQS, GetInstanceProfile, DescribeCluster.
 resource "aws_iam_role_policy" "karpenter_controller" {
   count = var.create_eks && var.cluster_exists ? 1 : 0
   name  = "${local.cluster_name}-karpenter-controller"
@@ -63,6 +75,31 @@ resource "aws_iam_role_policy" "karpenter_controller" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
+      {
+        Sid    = "KarpenterControllerPolicyOfficial"
+        Effect = "Allow"
+        Action = [
+          "ec2:CreateLaunchTemplate",
+          "ec2:CreateFleet",
+          "ec2:RunInstances",
+          "ec2:CreateTags",
+          "ec2:TerminateInstances",
+          "ec2:DeleteLaunchTemplate",
+          "ec2:DescribeLaunchTemplates",
+          "ec2:DescribeInstances",
+          "ec2:DescribeSecurityGroups",
+          "ec2:DescribeSubnets",
+          "ec2:DescribeImages",
+          "ec2:DescribeInstanceTypes",
+          "ec2:DescribeInstanceTypeOfferings",
+          "ec2:DescribeAvailabilityZones",
+          "ec2:DescribeSpotPriceHistory",
+          "ssm:GetParameter",
+          "ssm:GetParametersByPath",
+          "pricing:GetProducts"
+        ]
+        Resource = "*"
+      },
       {
         Sid    = "AllowScopedEC2InstanceActions"
         Effect = "Allow"
@@ -139,9 +176,9 @@ resource "aws_iam_role_policy" "karpenter_controller" {
         }
       },
       {
-        Sid      = "AllowScopedResourceTagging"
-        Effect   = "Allow"
-        Action   = "ec2:CreateTags"
+        Sid    = "AllowScopedResourceTagging"
+        Effect = "Allow"
+        Action = "ec2:CreateTags"
         Resource = "arn:aws:ec2:${var.region}:*:instance/*"
         Condition = {
           StringEquals = {
@@ -197,20 +234,6 @@ resource "aws_iam_role_policy" "karpenter_controller" {
         }
       },
       {
-        Sid    = "AllowCreateFleetAuthCheck"
-        Effect = "Allow"
-        Action = [
-          "ec2:CreateFleet",
-          "ec2:RunInstances"
-        ]
-        Resource = "*"
-        Condition = {
-          StringEquals = {
-            "aws:RequestedRegion" = var.region
-          }
-        }
-      },
-      {
         Sid    = "AllowSSMReadActions"
         Effect = "Allow"
         Action = "ssm:GetParameter"
@@ -236,10 +259,15 @@ resource "aws_iam_role_policy" "karpenter_controller" {
         Resource = aws_sqs_queue.karpenter[0].arn
       },
       {
-        Sid      = "AllowPassingInstanceRole"
-        Effect   = "Allow"
-        Action   = "iam:PassRole"
+        Sid    = "AllowPassingInstanceRole"
+        Effect = "Allow"
+        Action = "iam:PassRole"
         Resource = module.eks[0].node_role_arn
+        Condition = {
+          StringEquals = {
+            "iam:PassedToService" = "ec2.amazonaws.com"
+          }
+        }
       },
       {
         Sid      = "AllowInstanceProfileRead"
@@ -254,11 +282,23 @@ resource "aws_iam_role_policy" "karpenter_controller" {
           "eks:DescribeCluster"
         ]
         Resource = module.eks[0].cluster_arn
+      },
+      {
+        Sid    = "AllowCreateServiceLinkedRole"
+        Effect = "Allow"
+        Action = "iam:CreateServiceLinkedRole"
+        Resource = "arn:aws:iam::*:role/aws-service-role/spot.amazonaws.com/*"
+        Condition = {
+          StringEquals = {
+            "iam:AWSServiceName" = "spot.amazonaws.com"
+          }
+        }
       }
     ]
   })
-}
 
+  depends_on = [aws_iam_service_linked_role.spot]
+}
 
 # EKS-optimized AMI via SSM. AL2 deprecated Nov 2025; use AL2023 for 1.33.
 data "aws_ssm_parameter" "eks_ami" {
@@ -288,8 +328,11 @@ resource "kubectl_manifest" "karpenter_nodeclass" {
   depends_on = [helm_release.karpenter[0]]
 }
 
+
+
 # NodePool - default (spot + on-demand, instance types, limits)
 # nodeClassRef uses group/kind/name per v1 API and AWS best practices.
+# Added more instance types for better spot availability (min 5 types recommended)
 resource "kubectl_manifest" "karpenter_nodepool" {
   count = var.create_eks && var.cluster_exists ? 1 : 0
 
@@ -311,7 +354,16 @@ resource "kubectl_manifest" "karpenter_nodepool" {
             { key = "karpenter.sh/capacity-type", operator = "In", values = ["spot", "on-demand"] },
             { key = "kubernetes.io/arch", operator = "In", values = ["amd64"] },
             { key = "kubernetes.io/os", operator = "In", values = ["linux"] },
-            { key = "node.kubernetes.io/instance-type", operator = "In", values = ["m5.large", "m5.xlarge", "m5.2xlarge", "c5.large", "c5.xlarge", "c5.2xlarge"] }
+            { 
+              key = "node.kubernetes.io/instance-type", 
+              operator = "In", 
+              values = [
+                "m5.large", "m5.xlarge", "m5.2xlarge",
+                "m6i.large", "m6i.xlarge", "m6i.2xlarge",
+                "c5.large", "c5.xlarge", "c5.2xlarge",
+                "c6i.large", "c6i.xlarge"
+              ]
+            }
           ]
         }
       }
@@ -325,3 +377,135 @@ resource "kubectl_manifest" "karpenter_nodepool" {
 
   depends_on = [helm_release.karpenter[0], kubectl_manifest.karpenter_nodeclass[0]]
 }
+
+
+
+
+
+# NodePool - default (non-critical workloads, can use spot)
+# nodeClassRef uses group/kind/name per v1 API and AWS best practices.
+# Added more instance types for better spot availability (min 5 types recommended)
+resource "kubectl_manifest" "karpenter_nodepool_default" {
+  count = var.create_eks && var.cluster_exists ? 1 : 0
+
+  yaml_body = yamlencode({
+    apiVersion = "karpenter.sh/v1"
+    kind       = "NodePool"
+    metadata   = { name = "default" }
+    spec = {
+      template = {
+        metadata = { 
+          labels = { 
+            "workload-type" = "general"
+            "intent"        = "apps"
+          } 
+        }
+        spec = {
+          nodeClassRef = {
+            group = "karpenter.k8s.aws"
+            kind  = "EC2NodeClass"
+            name  = "default"
+          }
+          expireAfter = "720h" # Rotate nodes every 30 days
+          requirements = [
+            { key = "karpenter.sh/capacity-type", operator = "In", values = ["spot", "on-demand"] },
+            { key = "kubernetes.io/arch", operator = "In", values = ["amd64"] },
+            { key = "kubernetes.io/os", operator = "In", values = ["linux"] },
+            { 
+              key = "node.kubernetes.io/instance-type", 
+              operator = "In", 
+              values = [
+                "m5.large", "m5.xlarge", "m5.2xlarge",
+                "m6i.large", "m6i.xlarge", "m6i.2xlarge",
+                "c5.large", "c5.xlarge", "c5.2xlarge",
+                "c6i.large", "c6i.xlarge"
+              ]
+            }
+          ]
+        }
+      }
+      limits = { cpu = "1000", memory = "1000Gi" }
+      disruption = {
+        consolidationPolicy = "WhenEmptyOrUnderutilized"
+        consolidateAfter    = "30s"
+        budgets = [
+          {
+            nodes = "10%"
+            reasons = ["Underutilized", "Empty"]
+          }
+        ]
+      }
+    }
+  })
+
+  depends_on = [helm_release.karpenter[0], kubectl_manifest.karpenter_nodeclass[0]]
+}
+
+# NodePool - critical (critical workloads, on-demand only, conservative disruption)
+resource "kubectl_manifest" "karpenter_nodepool_critical" {
+  count = var.create_eks && var.cluster_exists ? 1 : 0
+
+  yaml_body = yamlencode({
+    apiVersion = "karpenter.sh/v1"
+    kind       = "NodePool"
+    metadata   = { name = "critical" }
+    spec = {
+      weight = 100 # Higher weight = preferred for matching pods
+      template = {
+        metadata = { 
+          labels = { 
+            "workload-type" = "critical"
+            "intent"        = "critical-apps"
+          } 
+        }
+        spec = {
+          nodeClassRef = {
+            group = "karpenter.k8s.aws"
+            kind  = "EC2NodeClass"
+            name  = "default"
+          }
+          expireAfter = "Never" # Don't automatically expire critical nodes
+          requirements = [
+            { key = "karpenter.sh/capacity-type", operator = "In", values = ["on-demand"] },
+            { key = "kubernetes.io/arch", operator = "In", values = ["amd64"] },
+            { key = "kubernetes.io/os", operator = "In", values = ["linux"] },
+            { 
+              key = "node.kubernetes.io/instance-type", 
+              operator = "In", 
+              values = [
+                "m6i.xlarge", "m6i.2xlarge",
+                "m5.xlarge", "m5.2xlarge",
+                "c6i.xlarge", "c6i.2xlarge"
+              ]
+            }
+          ]
+          taints = [
+            { 
+              key    = "workload-type"
+              value  = "critical"
+              effect = "NoSchedule"
+            }
+          ]
+        }
+      }
+      limits = { cpu = "100", memory = "200Gi" }
+      disruption = {
+        consolidationPolicy = "WhenEmpty"  # Only consolidate when completely empty
+        consolidateAfter    = "30m"        # Wait 30 minutes before consolidating
+        budgets = [
+          {
+            nodes = "0"  # Don't disrupt any nodes for underutilization
+            reasons = ["Underutilized"]
+          }
+        ]
+      }
+    }
+  })
+
+  depends_on = [helm_release.karpenter[0], kubectl_manifest.karpenter_nodeclass[0]]
+}
+
+
+
+
+

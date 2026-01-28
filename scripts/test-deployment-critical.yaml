@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inflate-critical
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: inflate-critical
+  template:
+    metadata:
+      labels:
+        app: inflate-critical
+    spec:
+      tolerations:
+      - key: "workload-type"
+        operator: "Equal"
+        value: "critical"
+        effect: "NoSchedule"
+      nodeSelector:
+        workload-type: critical
+      terminationGracePeriodSeconds: 0
+      priorityClassName: critical
+      containers:
+      - name: inflate-critical
+        image: public.ecr.aws/eks-distro/kubernetes/pause:3.7
+        resources:
+          requests:
+            cpu: "1"
+            memory: "1.5Gi"
