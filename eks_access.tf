@@ -10,8 +10,14 @@ locals {
     dev    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy"
     qa     = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy"
   }
-  _eks_cluster_name        = var.create_eks ? module.eks[0].cluster_name : "local"
-  _eks_exec_arn_raw        = length(var.eks_exec_role_arn) > 0 ? var.eks_exec_role_arn : (fileexists("${path.module}/environments/${var.environment}/eks-exec-role-arn.txt") ? trimspace(file("${path.module}/environments/${var.environment}/eks-exec-role-arn.txt")) : "")
+  _eks_cluster_name = var.create_eks ? module.eks[0].cluster_name : "local"
+  # Prefer explicit var, then per-environment file, then (convention) cluster_access_entries["eks-exec"].principal_arn.
+  # This lets CI set `-var="use_eks_exec_role=true"` without needing an extra secret/file, as long as tfvars defines the eks-exec principal.
+  _eks_exec_arn_raw = length(var.eks_exec_role_arn) > 0 ? var.eks_exec_role_arn : (
+    fileexists("${path.module}/environments/${var.environment}/eks-exec-role-arn.txt")
+    ? trimspace(file("${path.module}/environments/${var.environment}/eks-exec-role-arn.txt"))
+    : try(var.cluster_access_entries["eks-exec"].principal_arn, "")
+  )
   _eks_exec_arn            = var.use_eks_exec_role && length(local._eks_exec_arn_raw) > 0 ? local._eks_exec_arn_raw : ""
   _eks_exec_entry          = length(local._eks_exec_arn) > 0 ? { "eks-exec" = { principal_arn = local._eks_exec_arn, level = "admin", namespaces = null } } : {}
   _entries_merged          = merge(var.cluster_access_entries, local._eks_exec_entry)
