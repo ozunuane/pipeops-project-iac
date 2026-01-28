@@ -30,13 +30,14 @@ resource "null_resource" "gateway_api_crds" {
 
 # AWS Load Balancer Controller (Helm) with Gateway API feature gates.
 # IngressClass `alb` + IngressGroup; ALB/NLB for Gateway API (GatewayClass alb).
+# Chart 1.14.1+ required: controller v2.14+ supports ALBGatewayAPI/NLBGatewayAPI (v2.8.x does not).
 resource "helm_release" "aws_load_balancer_controller" {
   count = local._lbc_enabled ? 1 : 0
 
   name             = "aws-load-balancer-controller"
   repository       = "https://aws.github.io/eks-charts"
   chart            = "aws-load-balancer-controller"
-  version          = "1.8.1"
+  version          = "1.14.1"
   namespace        = "kube-system"
   create_namespace = false
 
@@ -50,13 +51,17 @@ resource "helm_release" "aws_load_balancer_controller" {
       region      = var.region
       vpcId       = module.vpc.vpc_id
 
+      image = {
+        tag = "v2.14.1"
+      }
+
       serviceAccount = {
         create      = true
         name        = "aws-load-balancer-controller"
         annotations = { "eks.amazonaws.com/role-arn" = module.eks[0].aws_load_balancer_controller_role_arn }
       }
 
-      ingressClass     = "alb"
+      ingressClass               = "alb"
       createIngressClassResource = true
 
       enableCertManager = false

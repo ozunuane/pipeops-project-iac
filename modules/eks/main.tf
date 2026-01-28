@@ -449,8 +449,8 @@ resource "aws_iam_role_policy_attachment" "ebs_csi_AmazonEBSCSIDriverPolicy" {
 }
 
 resource "aws_iam_role" "aws_load_balancer_controller" {
-  count  = var.enable_aws_load_balancer_controller_addon ? 1 : 0
-  name   = "${var.cluster_name}-aws-lb-controller-role"
+  count = var.enable_aws_load_balancer_controller_addon ? 1 : 0
+  name  = "${var.cluster_name}-aws-lb-controller-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{

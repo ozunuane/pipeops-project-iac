@@ -86,6 +86,16 @@ enable_argocd     = false
 enable_monitoring = false
 enable_logging    = false
 
+# StorageClasses to create (optional).
+# If omitted, Terraform creates a single default gp3 StorageClass named:
+#   "<project_name>-<environment>-gp3-storageclass"
+storage_classes = [
+  {
+    name     = "pipeops-prod-gp3-storageclass"
+    ebs_type = "gp3"
+  }
+]
+
 # EKS 1.33: AWS LB Controller addon not supported; keep false. Use Helm if needed.
 enable_aws_load_balancer_controller_addon = false
 
