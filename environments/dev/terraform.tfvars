@@ -21,6 +21,14 @@ create_rds         = false # Set false to skip RDS and DB-related resources
 use_eks_exec_role  = false # Local dev: use your AWS identity for EKS (avoids "aws failed 254" when you can't assume exec role)
 # aws_profile        = "myprofile" # Uncomment if using a named profile for Terraform/Helm
 
+# EKS access: CI uses eks-exec (use_eks_exec_role=true override in workflow). Local dev uses your identity; add your principal_arn here if needed.
+cluster_access_entries = {
+  "eks-exec" = {
+    principal_arn = "arn:aws:iam::742890864997:role/pipeops-dev-eks-terraform-exec"
+    level         = "admin"
+  }
+}
+
 # RDS Configuration - DEVELOPMENT (Cost-optimized, Single-AZ)
 db_instance_class              = "db.t4g.medium" # Burstable instance for cost savings
 db_allocated_storage           = 50              # 50 GB storage

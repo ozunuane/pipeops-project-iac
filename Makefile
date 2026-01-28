@@ -46,6 +46,7 @@ help:
 	@echo "State lock 'ResourceNotFoundException'? Run: make init ENV=$(ENV)  (then retry)"
 	@echo "Stale state lock? terraform force-unlock <LOCK_ID>"
 	@echo "'aws failed 254' / cluster unreachable? Set use_eks_exec_role=false in tfvars for local dev, or use plan-no-refresh + apply-plan."
+	@echo "Pipeline: workflow uses use_eks_exec_role=true + bootstrap EKS access step; ensure eks-exec-role-arn.txt exists per env."
 
 check-env:
 	@test -f $(BACKEND_CONFIG) || (echo "Missing $(BACKEND_CONFIG). Use ENV=dev|staging|prod."; exit 1)
