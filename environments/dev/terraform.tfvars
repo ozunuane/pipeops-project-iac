@@ -74,11 +74,11 @@ storage_classes = [
   #   ebs_type = "gp3"
   # },
 
-  # # Grafana-only StorageClass (separate name)
-  # {
-  #   name     = "grafana-storage-class"
-  #   ebs_type = "gp3"
-  # },
+  # Grafana-only StorageClass (separate name)
+  {
+    name     = "grafana-storage-class"
+    ebs_type = "gp3"
+  }
 
   # Example: additional StorageClass (uncomment if needed)
   # {
