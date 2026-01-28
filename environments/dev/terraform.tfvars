@@ -93,7 +93,7 @@ storage_classes = [
 # Use the repo-managed dev StorageClass name.
 # If you are switching from an older StorageClass name, you must delete/recreate existing PVCs
 # because PVC.spec.storageClassName is immutable.
-grafana_storage_class_name    = "grafana-storage-class"
+grafana_storage_class_name = "grafana-storage-class"
 
 # Tags
 # AWS Backup Configuration (minimal for dev)
