@@ -223,11 +223,25 @@ jobs:
         run: terraform fmt -check -recursive
         continue-on-error: true
 
+      # Ensure EKS access entries exist before plan/apply so Helm/K8s providers can connect.
+      # Uses -refresh=false (no cluster connection). CI uses eks-exec for EKS auth (-var below).
+      - name: Bootstrap EKS access (existing clusters)
+        if: ${{ steps.check-backend.outputs.backend_exists == 'true' && !(github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy') }}
+        run: |
+          terraform apply -refresh=false \
+            -var-file="environments/${{ matrix.environment }}/terraform.tfvars" \
+            -var="use_eks_exec_role=true" \
+            -target='aws_eks_access_entry.cluster_access' \
+            -target='aws_eks_access_policy_association.cluster_scoped' \
+            -target='aws_eks_access_policy_association.namespace_scoped' \
+            -auto-approve
+
       - name: Terraform Plan
         id: plan
         run: |
           terraform plan \
             -var-file="environments/${{ matrix.environment }}/terraform.tfvars" \
+            -var="use_eks_exec_role=true" \
             -out=tfplan-${{ matrix.environment }} \
             -no-color | tee plan-output.txt
 
