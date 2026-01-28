@@ -141,7 +141,7 @@ variable "enable_logging" {
 }
 
 variable "enable_aws_load_balancer_controller_addon" {
-  description = "Install AWS Load Balancer Controller as EKS addon. Set to false for Kubernetes 1.33 (addon not supported); use Helm instead if needed."
+  description = "Install AWS Load Balancer Controller via Helm with Gateway API support (IngressClass alb, GatewayClass alb for HTTPRoute/GRPCRoute)."
   type        = bool
   default     = false
 }

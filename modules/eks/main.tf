@@ -294,8 +294,6 @@ resource "aws_iam_openid_connect_provider" "cluster" {
 # ==========================================
 locals {
   oidc_issuer_host = replace(aws_eks_cluster.main.identity[0].oidc[0].issuer, "https://", "")
-  # AWS LB Controller addon is not supported on EKS 1.33; install via Helm if needed.
-  enable_lb_controller_addon = var.enable_aws_load_balancer_controller_addon
 }
 
 # Resolve addon versions compatible with cluster Kubernetes version (avoids "not supported" errors)
@@ -319,13 +317,6 @@ data "aws_eks_addon_version" "kube_proxy" {
 
 data "aws_eks_addon_version" "ebs_csi" {
   addon_name         = "aws-ebs-csi-driver"
-  kubernetes_version = var.kubernetes_version
-  most_recent        = true
-}
-
-data "aws_eks_addon_version" "aws_load_balancer_controller" {
-  count              = local.enable_lb_controller_addon ? 1 : 0
-  addon_name         = "aws-load-balancer-controller"
   kubernetes_version = var.kubernetes_version
   most_recent        = true
 }
@@ -406,22 +397,6 @@ resource "aws_eks_addon" "ebs_csi" {
   }
 }
 
-resource "aws_eks_addon" "aws_load_balancer_controller" {
-  count                       = local.enable_lb_controller_addon ? 1 : 0
-  cluster_name                = aws_eks_cluster.main.name
-  addon_name                  = "aws-load-balancer-controller"
-  addon_version               = data.aws_eks_addon_version.aws_load_balancer_controller[0].version
-  service_account_role_arn    = aws_iam_role.aws_load_balancer_controller.arn
-  resolve_conflicts_on_create = "OVERWRITE"
-  resolve_conflicts_on_update = "OVERWRITE"
-  tags                        = var.tags
-  depends_on                  = [aws_eks_cluster.main, aws_eks_addon.vpc_cni]
-
-  lifecycle {
-    ignore_changes = [addon_version]
-  }
-}
-
 # ==========================================
 # IRSA Roles for Addons
 # ==========================================
@@ -474,7 +449,8 @@ resource "aws_iam_role_policy_attachment" "ebs_csi_AmazonEBSCSIDriverPolicy" {
 }
 
 resource "aws_iam_role" "aws_load_balancer_controller" {
-  name = "${var.cluster_name}-aws-lb-controller-role"
+  count  = var.enable_aws_load_balancer_controller_addon ? 1 : 0
+  name   = "${var.cluster_name}-aws-lb-controller-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -493,8 +469,9 @@ resource "aws_iam_role" "aws_load_balancer_controller" {
 }
 
 resource "aws_iam_role_policy" "aws_load_balancer_controller" {
+  count  = var.enable_aws_load_balancer_controller_addon ? 1 : 0
   name   = "${var.cluster_name}-aws-lb-controller"
-  role   = aws_iam_role.aws_load_balancer_controller.id
+  role   = aws_iam_role.aws_load_balancer_controller[0].id
   policy = data.aws_iam_policy_document.aws_load_balancer_controller.json
 }
 

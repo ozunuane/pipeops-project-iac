@@ -21,6 +21,8 @@ create_rds         = false # Set false to skip RDS and DB-related resources
 use_eks_exec_role  = false # Local dev: use your AWS identity for EKS (avoids "aws failed 254" when you can't assume exec role)
 # aws_profile        = "myprofile" # Uncomment if using a named profile for Terraform/Helm
 
+enable_aws_load_balancer_controller_addon = true # Helm LBC + Gateway API (IngressClass alb, GatewayClass alb)
+
 # EKS access: CI uses eks-exec (use_eks_exec_role=true override in workflow). Local dev uses your identity; add your principal_arn here if needed.
 cluster_access_entries = {
   "eks-exec" = {

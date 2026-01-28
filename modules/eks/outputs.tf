@@ -82,3 +82,8 @@ output "karpenter_role_name" {
   description = "IAM role name for Karpenter controller (for policy attachment)"
   value       = aws_iam_role.karpenter.name
 }
+
+output "aws_load_balancer_controller_role_arn" {
+  description = "IAM role ARN for AWS Load Balancer Controller (IRSA). Set when enable_aws_load_balancer_controller_addon is true."
+  value       = var.enable_aws_load_balancer_controller_addon ? aws_iam_role.aws_load_balancer_controller[0].arn : null
+}
