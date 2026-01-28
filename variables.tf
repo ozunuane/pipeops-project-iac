@@ -128,6 +128,36 @@ variable "enable_monitoring" {
   default     = true
 }
 
+variable "monitoring_storage_class_name" {
+  description = "StorageClass name to use for monitoring PVCs (Grafana, Prometheus, Alertmanager). Leave empty to use the repo-managed 'project-environment-gp3-storageclass'. Set to 'gp3' to keep compatibility with existing PVCs created using the cluster's default gp3 StorageClass."
+  type        = string
+  default     = ""
+}
+
+variable "grafana_storage_class_name" {
+  description = "Optional override StorageClass name for Grafana PVC only. If empty, Grafana uses monitoring_storage_class_name/default."
+  type        = string
+  default     = ""
+}
+
+variable "storage_classes" {
+  description = "Optional list of Kubernetes StorageClasses to create. If null, a single default gp3 StorageClass named '<project>-<environment>-gp3-storageclass' will be created."
+  type = list(object({
+    name                   = string
+    provisioner            = optional(string, "ebs.csi.aws.com")
+    reclaim_policy         = optional(string, "Delete")
+    volume_binding_mode    = optional(string, "WaitForFirstConsumer")
+    allow_volume_expansion = optional(bool, true)
+    ebs_type               = optional(string)
+    parameters             = optional(map(string), {})
+    annotations            = optional(map(string), {})
+    labels                 = optional(map(string), {})
+    is_default             = optional(bool, false)
+  }))
+  default  = null
+  nullable = true
+}
+
 variable "enable_metrics_server" {
   description = "Install metrics-server via Helm. Required for HPA (CPU/memory), Karpenter right-sizing, and kubectl top."
   type        = bool

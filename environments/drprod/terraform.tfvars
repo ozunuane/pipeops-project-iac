@@ -65,6 +65,16 @@ enable_argocd     = true
 enable_monitoring = false # Enable during DR activation
 enable_logging    = false # Enable during DR activation
 
+# StorageClasses to create (optional).
+# If omitted, Terraform creates a single default gp3 StorageClass named:
+#   "<project_name>-<environment>-gp3-storageclass"
+storage_classes = [
+  {
+    name     = "pipeops-drprod-gp3-storageclass"
+    ebs_type = "gp3"
+  }
+]
+
 # Tags
 tags = {
   Project     = "pipeops"

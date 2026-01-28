@@ -169,3 +169,26 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "monitoring_node_selector" {
+  description = "Node selector for monitoring (e.g. workload-type=system). Schedule Prometheus, Grafana, etc. on dedicated nodes."
+  type        = map(string)
+  default     = {}
+}
+
+variable "monitoring_tolerations" {
+  description = "Tolerations for monitoring nodes (e.g. workload-type=system:NoSchedule). Pass from local.karpenter_system_tolerations."
+  type        = list(any)
+  default     = []
+}
+
+variable "storage_class_name" {
+  description = "StorageClass name for monitoring PVCs (Grafana, Prometheus, Alertmanager). Must match the gp3 StorageClass metadata name (e.g. project-environment-gp3-storageclass)."
+  type        = string
+}
+
+variable "grafana_storage_class_name" {
+  description = "Optional override StorageClass name for Grafana PVC only. If empty, Grafana uses storage_class_name."
+  type        = string
+  default     = ""
+}

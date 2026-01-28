@@ -6,6 +6,25 @@
 # Deploy only when cluster exists. EC2NodeClass uses existing EKS node instance profile.
 # ==========================================
 
+# Reuse for deployments that should run on specific NodePools.
+locals {
+  karpenter_critical_node_selector = { "workload-type" = "critical" }
+  karpenter_critical_tolerations = [{
+    key      = "workload-type"
+    operator = "Equal"
+    value    = "critical"
+    effect   = "NoSchedule"
+  }]
+  # Tainted nodes for monitoring (workload-type=system).
+  karpenter_system_node_selector = { "workload-type" = "system" }
+  karpenter_system_tolerations = [{
+    key      = "workload-type"
+    operator = "Equal"
+    value    = "system"
+    effect   = "NoSchedule"
+  }]
+}
+
 # SQS Queue for Karpenter spot interruption handling
 resource "aws_sqs_queue" "karpenter" {
   count                     = var.create_eks && var.cluster_exists ? 1 : 0
@@ -508,4 +527,66 @@ resource "kubectl_manifest" "karpenter_nodepool_critical" {
 
 
 
+# NodePool - system/monitoring (on-demand, stable, no spot)
+# For infrastructure components: Prometheus, Grafana, Loki, Karpenter, etc.
+resource "kubectl_manifest" "karpenter_nodepool_system" {
+  count = var.create_eks && var.cluster_exists ? 1 : 0
 
+  yaml_body = yamlencode({
+    apiVersion = "karpenter.sh/v1"
+    kind       = "NodePool"
+    metadata   = { name = "system" }
+    spec = {
+      weight = 50 # Lower priority than critical (100), higher than default (0)
+      template = {
+        metadata = {
+          labels = {
+            "workload-type" = "system"
+            "intent"        = "infrastructure"
+          }
+        }
+        spec = {
+          nodeClassRef = {
+            group = "karpenter.k8s.aws"
+            kind  = "EC2NodeClass"
+            name  = "default"
+          }
+          expireAfter = "Never" # Monitoring should be stable
+          requirements = [
+            { key = "karpenter.sh/capacity-type", operator = "In", values = ["on-demand"] }, # No spot for monitoring
+            { key = "kubernetes.io/arch", operator = "In", values = ["amd64"] },
+            { key = "kubernetes.io/os", operator = "In", values = ["linux"] },
+            {
+              key      = "node.kubernetes.io/instance-type",
+              operator = "In",
+              values = [
+                "m6i.large", "m6i.xlarge", # Good for general monitoring
+                "r6i.large", "r6i.xlarge"  # Memory-optimized for Prometheus
+              ]
+            }
+          ]
+          taints = [
+            {
+              key    = "workload-type"
+              value  = "system"
+              effect = "NoSchedule"
+            }
+          ]
+        }
+      }
+      limits = { cpu = "50", memory = "100Gi" } # Adjust based on monitoring needs
+      disruption = {
+        consolidationPolicy = "WhenEmpty" # Conservative - only when fully empty
+        consolidateAfter    = "1h"        # Long wait time for stability
+        budgets = [
+          {
+            nodes   = "0" # Don't disrupt system nodes for underutilization
+            reasons = ["Underutilized"]
+          }
+        ]
+      }
+    }
+  })
+
+  depends_on = [helm_release.karpenter[0], kubectl_manifest.karpenter_nodeclass[0]]
+}

@@ -58,10 +58,42 @@ ecr_repository_names = [
 ]
 ecr_enable_replication = false # No DR replication in dev
 
+
 # Feature Flags
 enable_argocd     = true
-enable_monitoring = false # Disable monitoring in dev to save costs
-enable_logging    = false # Disable logging in dev
+enable_monitoring = true # Disable monitoring in dev to save costs
+enable_logging    = true # Disable logging in dev
+
+# StorageClasses to create (optional).
+# If omitted, Terraform creates a single default gp3 StorageClass named:
+#   "<project_name>-<environment>-gp3-storageclass"
+storage_classes = [
+  # # Main gp3 StorageClass used by monitoring PVCs
+  # {
+  #   name     = "pipeops-dev-gp3-storageclass"
+  #   ebs_type = "gp3"
+  # },
+
+  # # Grafana-only StorageClass (separate name)
+  # {
+  #   name     = "grafana-storage-class"
+  #   ebs_type = "gp3"
+  # },
+
+  # Example: additional StorageClass (uncomment if needed)
+  # {
+  #   name       = "pipeops-dev-gp2-storageclass"
+  #   provisioner = "kubernetes.io/aws-ebs"
+  #   parameters  = { type = "gp2" }
+  #   allow_volume_expansion = false
+  # }
+]
+
+# Monitoring storage:
+# Use the repo-managed dev StorageClass name.
+# If you are switching from an older StorageClass name, you must delete/recreate existing PVCs
+# because PVC.spec.storageClassName is immutable.
+grafana_storage_class_name    = "grafana-storage-class"
 
 # Tags
 # AWS Backup Configuration (minimal for dev)

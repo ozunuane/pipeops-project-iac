@@ -201,7 +201,23 @@ module "monitoring" {
   oidc_issuer_url        = var.create_eks ? module.eks[0].cluster_oidc_issuer_url : ""
   tags                   = var.tags
 
-  depends_on = [module.eks, aws_eks_access_policy_association.cluster_scoped]
+  monitoring_node_selector = local.karpenter_system_node_selector
+  monitoring_tolerations   = local.karpenter_system_tolerations
+  # IMPORTANT: PVCs cannot change storageClassName after creation.
+  # Leave empty to use the repo-managed StorageClass; set to "gp3" to preserve existing PVCs created with the default gp3 StorageClass.
+  storage_class_name = (
+    trimspace(var.monitoring_storage_class_name) != ""
+    ? trimspace(var.monitoring_storage_class_name)
+    : "${var.project_name}-${var.environment}-gp3-storageclass"
+  )
+
+  grafana_storage_class_name = var.grafana_storage_class_name
+
+  depends_on = [
+    module.eks,
+    aws_eks_access_policy_association.cluster_scoped,
+    module.storage_classes
+  ]
 }
 
 # IAM role for External Secrets Operator - Only when EKS exists and cluster is ready

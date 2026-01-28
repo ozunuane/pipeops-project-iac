@@ -52,6 +52,16 @@ enable_argocd     = true
 enable_monitoring = true
 enable_logging    = true
 
+# StorageClasses to create (optional).
+# If omitted, Terraform creates a single default gp3 StorageClass named:
+#   "<project_name>-<environment>-gp3-storageclass"
+storage_classes = [
+  {
+    name     = "pipeops-staging-gp3-storageclass"
+    ebs_type = "gp3"
+  }
+]
+
 # Tags
 # AWS Backup Configuration
 enable_eks_backup               = true

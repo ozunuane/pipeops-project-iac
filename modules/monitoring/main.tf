@@ -54,11 +54,13 @@ resource "helm_release" "prometheus_stack" {
         fullnameOverride = "alertmanager"
 
         alertmanagerSpec = {
-          replicas = var.ha_mode ? 2 : 1
+          replicas     = var.ha_mode ? 2 : 1
+          nodeSelector = var.monitoring_node_selector
+          tolerations  = var.monitoring_tolerations
           storage = {
             volumeClaimTemplate = {
               spec = {
-                storageClassName = "gp3"
+                storageClassName = var.storage_class_name
                 accessModes      = ["ReadWriteOnce"]
                 resources = {
                   requests = {
@@ -125,11 +127,17 @@ resource "helm_release" "prometheus_stack" {
             }
           ]
         }
+        podDisruptionBudget = {
+          enabled      = true
+          minAvailable = 1
+        }
       }
 
       grafana = {
         enabled          = var.enable_grafana
         fullnameOverride = "grafana"
+        nodeSelector     = var.monitoring_node_selector
+        tolerations      = var.monitoring_tolerations
 
         adminPassword = var.grafana_admin_password
 
@@ -161,7 +169,7 @@ resource "helm_release" "prometheus_stack" {
 
         persistence = {
           enabled          = true
-          storageClassName = "gp3"
+          storageClassName = trimspace(var.grafana_storage_class_name) != "" ? trimspace(var.grafana_storage_class_name) : var.storage_class_name
           size             = "10Gi"
         }
 
@@ -174,6 +182,11 @@ resource "helm_release" "prometheus_stack" {
             cpu    = "100m"
             memory = "256Mi"
           }
+        }
+
+        podDisruptionBudget = {
+          enabled      = true
+          minAvailable = 1
         }
 
         dashboardProviders = {
@@ -249,13 +262,15 @@ resource "helm_release" "prometheus_stack" {
 
         prometheusSpec = {
           replicas      = var.ha_mode ? 2 : 1
+          nodeSelector  = var.monitoring_node_selector
+          tolerations   = var.monitoring_tolerations
           retention     = var.prometheus_retention
           retentionSize = var.prometheus_retention_size
 
           storageSpec = {
             volumeClaimTemplate = {
               spec = {
-                storageClassName = "gp3"
+                storageClassName = var.storage_class_name
                 accessModes      = ["ReadWriteOnce"]
                 resources = {
                   requests = {
@@ -287,6 +302,11 @@ resource "helm_release" "prometheus_stack" {
               ]
             }
           ]
+
+          podDisruptionBudget = {
+            enabled      = true
+            minAvailable = 1
+          }
         }
 
         ingress = {
@@ -310,6 +330,8 @@ resource "helm_release" "prometheus_stack" {
       }
 
       prometheusOperator = {
+        nodeSelector = var.monitoring_node_selector
+        tolerations  = var.monitoring_tolerations
         resources = {
           limits = {
             cpu    = "500m"
@@ -320,10 +342,16 @@ resource "helm_release" "prometheus_stack" {
             memory = "256Mi"
           }
         }
+        podDisruptionBudget = {
+          enabled      = true
+          minAvailable = 1
+        }
       }
 
       kubeStateMetrics = {
-        enabled = true
+        enabled      = true
+        nodeSelector = var.monitoring_node_selector
+        tolerations  = var.monitoring_tolerations
       }
 
       nodeExporter = {
