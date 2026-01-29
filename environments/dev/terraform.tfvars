@@ -68,11 +68,11 @@ enable_logging    = true # Disable logging in dev
 # If omitted, Terraform creates a single default gp3 StorageClass named:
 #   "<project_name>-<environment>-gp3-storageclass"
 storage_classes = [
-  # # Main gp3 StorageClass used by monitoring PVCs
-  # {
-  #   name     = "pipeops-dev-gp3-storageclass"
-  #   ebs_type = "gp3"
-  # },
+  # Main gp3 StorageClass used by Prometheus/Alertmanager PVCs
+  {
+    name     = "pipeops-dev-gp3-storageclass"
+    ebs_type = "gp3"
+  },
 
   # Grafana-only StorageClass (separate name)
   {
