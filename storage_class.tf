@@ -6,16 +6,8 @@ locals {
     ? var.storage_classes
     : tolist([
       {
-        name                   = local.default_gp3_storageclass_name
-        provisioner            = "ebs.csi.aws.com"
-        reclaim_policy         = "Delete"
-        volume_binding_mode    = "WaitForFirstConsumer"
-        allow_volume_expansion = true
-        ebs_type               = "gp3"
-        parameters             = {}
-        annotations            = {}
-        labels                 = {}
-        is_default             = false
+        name     = local.default_gp3_storageclass_name
+        ebs_type = "gp3"
       }
     ])
   )

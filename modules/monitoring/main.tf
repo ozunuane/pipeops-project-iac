@@ -167,6 +167,20 @@ resource "helm_release" "prometheus_stack" {
           } : {}
         }
 
+        # Additional data sources for Grafana (e.g. CloudWatch)
+        additionalDataSources = [
+          {
+            name      = "CloudWatch"
+            type      = "cloudwatch"
+            access    = "proxy"
+            isDefault = false
+            jsonData = {
+              authType      = "default"
+              defaultRegion = var.aws_region
+            }
+          }
+        ]
+
         persistence = {
           enabled          = true
           storageClassName = trimspace(var.grafana_storage_class_name) != "" ? trimspace(var.grafana_storage_class_name) : var.storage_class_name
